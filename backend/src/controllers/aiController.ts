@@ -4,7 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { ConversationModel } from '../models/Conversation';
 import { MessageModel } from '../models/Message';
 import { env } from '../config/env';
-import { google } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { streamText } from 'ai';
 
 // POST /api/ai/stream
@@ -28,10 +28,11 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
     // Save user message
     await MessageModel.create({ conversationId: convId, userId, role: 'user', content: message });
 
-    // Prepare streaming
-    const provider = google({ apiKey: env.GEMINI_API_KEY });
+    // Prepare streaming with v2 provider per AI SDK 5
+    const google = createGoogleGenerativeAI({ apiKey: env.GEMINI_API_KEY });
+    const modelId = (env as any).GEMINI_MODEL || 'gemini-2.0-flash';
     const response = await streamText({
-      model: provider('gemini-1.5-flash'),
+      model: google(modelId),
       messages: [
         { role: 'user', content: message },
       ],
