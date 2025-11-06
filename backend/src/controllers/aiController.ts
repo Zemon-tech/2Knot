@@ -4,7 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { ConversationModel } from '../models/Conversation';
 import { MessageModel } from '../models/Message';
 import { env } from '../config/env';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
 import { streamText } from 'ai';
 
 // POST /api/ai/stream
@@ -28,15 +28,23 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
     // Save user message
     await MessageModel.create({ conversationId: convId, userId, role: 'user', content: message });
 
-    // Prepare streaming with v2 provider per AI SDK 5
-    const google = createGoogleGenerativeAI({ apiKey: env.GEMINI_API_KEY });
+    // Use Google Gemini via OpenAI-compatible endpoint (chat.completions)
+    const baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
     const modelId = (env as any).GEMINI_MODEL || 'gemini-2.0-flash';
-    const response = await streamText({
-      model: google(modelId),
-      messages: [
-        { role: 'user', content: message },
-      ],
-    });
+    const openAI = createOpenAI({ apiKey: env.GEMINI_API_KEY, baseURL });
+
+    let response;
+    try {
+      response = await streamText({
+        model: openAI.chat(modelId),
+        messages: [
+          { role: 'user', content: message },
+        ],
+      });
+    } catch (err) {
+      // If model call fails before streaming starts, propagate a 502 without sending SSE headers
+      return next(createError(502, (err as Error).message));
+    }
 
     // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -45,13 +53,22 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
     res.flushHeaders?.();
 
     let assistantText = '';
-    for await (const delta of response.textStream) {
-      assistantText += delta;
-      res.write(`data: ${JSON.stringify({ type: 'delta', delta })}\n\n`);
+    try {
+      for await (const delta of response.textStream) {
+        assistantText += delta;
+        res.write(`data: ${JSON.stringify({ type: 'delta', delta })}\n\n`);
+      }
+    } catch (err) {
+      // End SSE stream gracefully on error to avoid double-send
+      res.write(`data: ${JSON.stringify({ type: 'error', message: (err as Error).message })}\n\n`);
+      res.end();
+      return;
     }
 
     // Persist assistant message
-    await MessageModel.create({ conversationId: convId, userId, role: 'assistant', content: assistantText });
+    if (assistantText.trim()) {
+      await MessageModel.create({ conversationId: convId, userId, role: 'assistant', content: assistantText });
+    }
 
     // Notify completion and conversationId for newly created chats
     res.write(`data: ${JSON.stringify({ type: 'done', conversationId: convId })}\n\n`);

@@ -9,6 +9,9 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@ai-sdk/google": "^1.2.22",
+    "@ai-sdk/openai": "^2.0.62",
+    "ai": "^5.0.87",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
@@ -21,9 +24,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.6.0",
     "morgan": "^1.10.0",
-    "zod": "^3.23.8",
-    "ai": "^5.0.87",
-    "@ai-sdk/google": "^1.0.6"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -38,5 +39,3 @@
     "typescript": "^5.6.3"
   }
 }
-
-

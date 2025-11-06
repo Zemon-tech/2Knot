@@ -51,7 +51,6 @@ export const api = {
   ai: {
     stream: (body: { conversationId?: string; message: string }, onDelta: (text: string) => void) => {
       const url = `${API_BASE}/ai/stream`;
-      const es = new EventSource(url + '?_=' + Date.now(), { withCredentials: true } as any);
       // We cannot send body with EventSource; use fetch with SSE polyfill via text/event-stream is non-trivial in browser.
       // Use fetch and read stream manually instead.
       return fetch(url, {
