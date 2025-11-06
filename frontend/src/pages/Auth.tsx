@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
@@ -20,6 +20,27 @@ export default function Auth({ initialMode = 'login' }: AuthProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Ensure Auth page respects system theme when Sidebar (theme manager) isn't mounted
+  useEffect(() => {
+    const theme = (localStorage.getItem('theme') as 'system' | 'light' | 'dark') || 'system';
+    const root = document.documentElement;
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const setDark = (on: boolean) => root.classList.toggle('dark', on);
+    const apply = (t: 'system' | 'light' | 'dark') => {
+      if (t === 'system') setDark(mql.matches);
+      else setDark(t === 'dark');
+    };
+
+    apply(theme);
+
+    const onSystemChange = () => {
+      if (theme === 'system') apply('system');
+    };
+    mql.addEventListener('change', onSystemChange);
+    return () => mql.removeEventListener('change', onSystemChange);
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
