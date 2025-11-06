@@ -25,6 +25,7 @@ import {
   SidebarTrigger,
   SidebarRail,
   SidebarUserButton,
+  useSidebar,
 } from '@/components/ui/sidebar';
 
 type Conversation = { _id: string; title: string };
@@ -37,6 +38,15 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const assistantBuffer = useRef('');
+
+  const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
+  const salutation = (() => {
+    const h = new Date().getHours();
+    if (h < 5) return 'Good night';
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  })();
 
   useEffect(() => {
     (async () => {
@@ -102,13 +112,29 @@ export default function Chat() {
     }
   }
 
+  function NavHeader() {
+    const { state } = useSidebar();
+    return (
+      <header className="sticky top-0 z-20 h-12 border-b px-4 flex items-center justify-between bg-background">
+        <div className="flex items-center gap-2">
+          {state === 'collapsed' && <SidebarTrigger />}
+          <div className="font-semibold">Quild AI Studio</div>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground" />
+      </header>
+    );
+  }
+
   return (
     <SidebarProvider>
       <Sidebar collapsible="offcanvas">
         <SidebarHeader>
-          <Button onClick={newChat} className="w-full justify-start" variant="default">
-            <PlusIcon className="mr-2 size-4" /> New Chat
-          </Button>
+          <div className="flex items-center justify-between gap-2">
+            <Button onClick={newChat} className="justify-start h-8 px-2 text-sm" size="sm" variant="ghost">
+              <PlusIcon className="mr-2 size-4" /> New Chat
+            </Button>
+            <SidebarTrigger hideWhenExpanded={false} />
+          </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
@@ -145,62 +171,77 @@ export default function Chat() {
         <SidebarRail />
       </Sidebar>
       <SidebarInset>
-        <header className="sticky top-0 z-20 h-14 border-b px-4 flex items-center justify-between bg-background">
-          <div className="flex items-center gap-2">
-            <SidebarTrigger />
-            <div className="font-semibold">Quild AI Studio</div>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <div className="hidden sm:block">{user?.email}</div>
-          </div>
-        </header>
+        <NavHeader />
         <div className="flex-1 overflow-visible">
-          <div className="mx-auto w-full max-w-3xl px-4 sm:px-6 lg:px-8 py-6 pb-28 space-y-6">
-            {messages.map((m, idx) => (
-              m.role === 'assistant' ? (
-                <div key={idx} className="w-full">
-                  <AIResponse className="prose dark:prose-invert max-w-none">
-                    {m.content}
-                  </AIResponse>
-                  <Actions className="mt-2">
-                    <Action
-                      tooltip="Copy"
-                      label="Copy"
-                      onClick={() => navigator.clipboard?.writeText(m.content)}
-                    >
-                      <CopyIcon className="size-4" />
-                    </Action>
-                  </Actions>
-                </div>
-              ) : (
-                <Message key={idx} from={m.role}>
-                  <MessageContent>{m.content}</MessageContent>
-                </Message>
-              )
-            ))}
-            {streaming && !assistantBuffer.current && (
-              <div className="w-full">
-                <Shimmer className="text-base">Thinking…</Shimmer>
+          {messages.length === 0 ? (
+            <div className="mx-auto w-full max-w-3xl px-4 sm:px-6 lg:px-8 py-16 min-h-[60vh] flex flex-col items-center justify-center text-center gap-6">
+              <div className="text-muted-foreground text-2xl sm:text-3xl">{salutation}, {displayName}</div>
+              <div className="text-3xl sm:text-4xl font-semibold tracking-tight">What's on the agenda today?</div>
+              <div className="w-full max-w-3xl">
+                <PromptInput
+                  onSubmit={async ({ text }) => {
+                    if (text) await onSend(text);
+                  }}
+                  groupClassName="rounded-3xl bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input"
+                >
+                  <PromptInputTextarea placeholder="Ask anything…" />
+                  <PromptInputFooter>
+                    <div />
+                    <PromptInputSubmit status={streaming ? 'streaming' : undefined} />
+                  </PromptInputFooter>
+                </PromptInput>
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="mx-auto w-full max-w-3xl px-4 sm:px-6 lg:px-8 py-6 pb-28 space-y-6">
+              {messages.map((m, idx) => (
+                m.role === 'assistant' ? (
+                  <div key={idx} className="w-full">
+                    <AIResponse className="prose dark:prose-invert max-w-none">
+                      {m.content}
+                    </AIResponse>
+                    <Actions className="mt-2">
+                      <Action
+                        tooltip="Copy"
+                        label="Copy"
+                        onClick={() => navigator.clipboard?.writeText(m.content)}
+                      >
+                        <CopyIcon className="size-4" />
+                      </Action>
+                    </Actions>
+                  </div>
+                ) : (
+                  <Message key={idx} from={m.role}>
+                    <MessageContent>{m.content}</MessageContent>
+                  </Message>
+                )
+              ))}
+              {streaming && !assistantBuffer.current && (
+                <div className="w-full">
+                  <Shimmer className="text-base">Thinking…</Shimmer>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        <div className="sticky bottom-0 z-20 pointer-events-none">
-          <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pointer-events-auto">
-            <PromptInput
-              onSubmit={async ({ text }) => {
-                if (text) await onSend(text);
-              }}
-              groupClassName="rounded-2xl bg-card px-3 py-2 border border-input shadow-xs"
-            >
-              <PromptInputTextarea placeholder="Send a message" />
-              <PromptInputFooter>
-                <div />
-                <PromptInputSubmit status={streaming ? 'streaming' : undefined} />
-              </PromptInputFooter>
-            </PromptInput>
+        {messages.length > 0 && (
+          <div className="sticky bottom-0 z-20 pointer-events-none">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pointer-events-auto">
+              <PromptInput
+                onSubmit={async ({ text }) => {
+                  if (text) await onSend(text);
+                }}
+                groupClassName="rounded-3xl bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input"
+              >
+                <PromptInputTextarea placeholder="Send a message" />
+                <PromptInputFooter>
+                  <div />
+                  <PromptInputSubmit status={streaming ? 'streaming' : undefined} />
+                </PromptInputFooter>
+              </PromptInput>
+            </div>
           </div>
-        </div>
+        )}
       </SidebarInset>
     </SidebarProvider>
   );

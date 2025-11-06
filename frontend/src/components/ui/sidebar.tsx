@@ -273,8 +273,9 @@ function Sidebar({
 function SidebarTrigger({
   className,
   onClick,
+  hideWhenExpanded = true,
   ...props
-}: React.ComponentProps<typeof Button>) {
+}: React.ComponentProps<typeof Button> & { hideWhenExpanded?: boolean }) {
   const { toggleSidebar } = useSidebar()
 
   return (
@@ -283,7 +284,11 @@ function SidebarTrigger({
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon"
-      className={cn("size-7", className)}
+      className={cn(
+        "size-7",
+        hideWhenExpanded && "peer-data-[state=expanded]:hidden",
+        className
+      )}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()
