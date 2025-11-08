@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { streamAIResponse } from '../controllers/aiController';
+import { streamAIResponse, generateConversationTitle } from '../controllers/aiController';
 
 export const aiRouter = Router();
 
 aiRouter.use(requireAuth);
 aiRouter.post('/stream', streamAIResponse);
+aiRouter.post('/title', generateConversationTitle);
 
 

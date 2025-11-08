@@ -16,7 +16,8 @@ import {
   PromptInputActionAddAttachments,
 } from '@/components/ai-elements/prompt-input';
 import { useAuth } from '../context/AuthContext';
-import { PlusIcon, Trash2Icon, CopyIcon, PanelLeftIcon, BookOpen, Globe, FolderPlus, ChevronDown } from 'lucide-react';
+import { PlusIcon, CopyIcon, PanelLeftIcon, BookOpen, FolderPlus, ChevronDown, Home as HomeIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Actions, Action } from '@/components/ai-elements/actions';
 import {
   SidebarProvider,
@@ -30,7 +31,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarMenuAction,
+  SidebarMenuActionsMenu,
   SidebarInset,
   SidebarTrigger,
   SidebarRail,
@@ -49,6 +50,8 @@ export default function Chat() {
   const [streaming, setStreaming] = useState(false);
   const [chatsOpen, setChatsOpen] = useState<boolean>(true);
   const assistantBuffer = useRef('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
 
   const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
   const salutation = (() => {
@@ -84,22 +87,38 @@ export default function Chat() {
     assistantBuffer.current = '';
     let convId = activeId || undefined;
     try {
-      await api.ai.stream({ conversationId: convId, message: userText }, (delta) => {
-        assistantBuffer.current += delta;
-        setMessages((m) => {
-          const last = m[m.length - 1];
-          if (last && last.role === 'assistant') {
-            return [...m.slice(0, -1), { ...last, content: assistantBuffer.current }];
-          }
-          return [...m, { role: 'assistant', content: assistantBuffer.current }];
-        });
-      });
-      if (!activeId) {
-        const { conversations } = await api.conversations.list();
-        setConversations(conversations as any);
-        const newest = conversations[0]?._id;
-        if (newest) setActiveId(newest);
+      let finalConvId: string | undefined = convId;
+      await api.ai.stream(
+        { conversationId: convId, message: userText },
+        {
+          onDelta: (delta: string) => {
+            assistantBuffer.current += delta;
+            setMessages((m) => {
+              const last = m[m.length - 1];
+              if (last && last.role === 'assistant') {
+                return [...m.slice(0, -1), { ...last, content: assistantBuffer.current }];
+              }
+              return [...m, { role: 'assistant', content: assistantBuffer.current }];
+            });
+          },
+          onDone: ({ conversationId }) => {
+            if (conversationId) finalConvId = conversationId;
+          },
+        }
+      );
+
+      // Ensure we have the conversation id for newly created chats
+      if (!finalConvId && activeId) finalConvId = activeId;
+
+      // Generate/update concise title and refresh list
+      if (finalConvId) {
+        try {
+          await api.ai.title(finalConvId);
+        } catch {}
       }
+      const { conversations } = await api.conversations.list();
+      setConversations(conversations as any);
+      if (!activeId && finalConvId) setActiveId(finalConvId);
     } catch (e) {
       // noop
     } finally {
@@ -121,6 +140,26 @@ export default function Chat() {
       setActiveId(null);
       setMessages([]);
     }
+  }
+
+  function startEditing(id: string) {
+    const current = conversations.find((x) => x._id === id)?.title || '';
+    setEditingId(id);
+    setEditValue(current);
+  }
+
+  async function saveRename(id: string, title: string) {
+    const t = title.trim();
+    setEditingId(null);
+    if (!t) return;
+    try {
+      const res = await api.conversations.rename(id, t);
+      setConversations((c) => c.map((x) => (x._id === id ? res.conversation : x)));
+    } catch {}
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
   }
 
   function NavHeader() {
@@ -161,6 +200,14 @@ export default function Chat() {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
+                  <SidebarMenuButton asChild>
+                    <Link to="/home">
+                      <HomeIcon />
+                      <span>Home</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
                   <SidebarMenuButton onClick={newChat}>
                     <PlusIcon />
                     <span>New chat</span>
@@ -170,12 +217,6 @@ export default function Chat() {
                   <SidebarMenuButton>
                     <BookOpen />
                     <span>Library</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton>
-                    <Globe />
-                    <span>Atlas</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
@@ -204,16 +245,37 @@ export default function Chat() {
                     <SidebarMenuItem key={c._id}>
                       <SidebarMenuButton
                         isActive={activeId === c._id}
-                        onClick={() => selectConversation(c._id)}
+                        onClick={() => {
+                          if (editingId) return;
+                          selectConversation(c._id);
+                        }}
                       >
-                        <span>{c.title}</span>
+                        {editingId === c._id ? (
+                          <input
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            autoFocus
+                            onFocus={(e) => e.currentTarget.select()}
+                            onBlur={() => saveRename(c._id, editValue)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                (e.currentTarget as HTMLInputElement).blur();
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelEditing();
+                              }
+                            }}
+                            className="bg-transparent outline-none border-0 focus:ring-0 w-full truncate"
+                          />
+                        ) : (
+                          <span>{c.title}</span>
+                        )}
                       </SidebarMenuButton>
-                      <SidebarMenuAction
-                        aria-label="Delete"
-                        onClick={(e) => { e.preventDefault(); removeChat(c._id); }}
-                      >
-                        <Trash2Icon className="size-4" />
-                      </SidebarMenuAction>
+                      <SidebarMenuActionsMenu
+                        onRename={() => startEditing(c._id)}
+                        onDelete={() => removeChat(c._id)}
+                      />
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>

@@ -7,7 +7,7 @@ import { ConversationModel } from '../models/Conversation';
 import { MessageModel } from '../models/Message';
 import { env } from '../config/env';
 import { createOpenAI } from '@ai-sdk/openai';
-import { streamText } from 'ai';
+import { streamText, generateText } from 'ai';
 
 // Load system prompt from file with fallback
 const SYSTEM_PROMPT: string = (() => {
@@ -28,6 +28,78 @@ const SYSTEM_PROMPT: string = (() => {
   }
   return 'You are a helpful assistant.';
 })();
+
+// POST /api/ai/title
+// body: { conversationId: string }
+export async function generateConversationTitle(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.userId;
+    const { conversationId } = req.body as { conversationId?: string };
+    if (!conversationId) {
+      throw createError(400, 'conversationId is required');
+    }
+
+    const conv = await ConversationModel.findOne({ _id: conversationId, userId });
+    if (!conv) throw createError(404, 'Conversation not found');
+
+    // If the title already looks custom (not default), we can still allow regeneration but it's fine.
+    const msgs = await MessageModel.find({ conversationId, userId })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const combined = msgs
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n')
+      .slice(0, 8000); // keep prompt bounded
+
+    const baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+    const modelId = (env as any).GEMINI_MODEL || 'gemini-2.0-flash';
+    const openAI = createOpenAI({ apiKey: env.GEMINI_API_KEY, baseURL });
+
+    const system = `You generate ultra-concise chat titles.
+Rules:
+- 2 or 3 words maximum.
+- Title case.
+- No punctuation, no quotes, no emojis.
+- Capture the main topic of the conversation.
+Return only the title.`;
+
+    const { text } = await generateText({
+      model: openAI.chat(modelId),
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: `Conversation transcript (truncated):\n\n${combined}` },
+      ],
+    });
+
+    let title = (text || '').trim();
+    // Post-process: strip quotes/punctuation and enforce shortness
+    title = title
+      .replace(/^"|"$/g, '')
+      .replace(/[.,;:!?\-_/\\()[\]{}"'`~*@#%^&+=|<>]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Fallbacks
+    if (!title) {
+      const firstUser = msgs.find((m) => m.role === 'user')?.content || 'New Chat';
+      title = (firstUser.length > 30 ? firstUser.slice(0, 30) + '…' : firstUser).trim();
+    }
+
+    // Ensure max 3 words
+    const words = title.split(' ').filter(Boolean).slice(0, 3);
+    title = words
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+
+    conv.title = title || conv.title;
+    await conv.save();
+
+    res.json({ title: conv.title });
+  } catch (err) {
+    next(err);
+  }
+}
 
 // POST /api/ai/stream
 // body: { conversationId?: string, message: string }

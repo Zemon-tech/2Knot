@@ -49,7 +49,10 @@ export const api = {
       request<{ messages: any[] }>(`/conversations/${id}/messages?page=${page}&pageSize=${pageSize}`),
   },
   ai: {
-    stream: (body: { conversationId?: string; message: string }, onDelta: (text: string) => void) => {
+    stream: (
+      body: { conversationId?: string; message: string },
+      handlers: { onDelta: (text: string) => void; onDone?: (data: { conversationId?: string }) => void }
+    ) => {
       const url = `${API_BASE}/ai/stream`;
       async function start() {
         const res = await fetch(url, {
@@ -93,7 +96,8 @@ export const api = {
               const payload = part.slice(6);
               try {
                 const evt = JSON.parse(payload);
-                if (evt.type === 'delta') onDelta(evt.delta as string);
+                if (evt.type === 'delta') handlers.onDelta(evt.delta as string);
+                if (evt.type === 'done') handlers.onDone?.({ conversationId: evt.conversationId as string });
               } catch {}
             }
           }
@@ -101,6 +105,11 @@ export const api = {
         return true;
       });
     },
+    title: (conversationId: string) =>
+      request<{ title: string }>(`/ai/title`, {
+        method: 'POST',
+        body: JSON.stringify({ conversationId }),
+      }),
   },
 };
 

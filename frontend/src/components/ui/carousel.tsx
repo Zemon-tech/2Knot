@@ -19,6 +19,8 @@ type CarouselProps = {
   plugins?: CarouselPlugin
   orientation?: "horizontal" | "vertical"
   setApi?: (api: CarouselApi) => void
+  wheelGestures?: boolean
+  edgeFades?: boolean
 }
 
 type CarouselContextProps = {
@@ -49,6 +51,8 @@ function Carousel({
   plugins,
   className,
   children,
+  wheelGestures,
+  edgeFades = true,
   ...props
 }: React.ComponentProps<"div"> & CarouselProps) {
   const [carouselRef, api] = useEmblaCarousel(
@@ -116,6 +120,8 @@ function Carousel({
         scrollNext,
         canScrollPrev,
         canScrollNext,
+        wheelGestures,
+        edgeFades,
       }}
     >
       <div
@@ -127,17 +133,76 @@ function Carousel({
         {...props}
       >
         {children}
+        {edgeFades && (
+          <>
+            <div
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute inset-y-0 left-0 w-16",
+                "bg-gradient-to-r from-background to-transparent",
+                canScrollPrev ? "opacity-100" : "opacity-0",
+                "transition-opacity"
+              )}
+            />
+            <div
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute inset-y-0 right-0 w-16",
+                "bg-gradient-to-l from-background to-transparent",
+                canScrollNext ? "opacity-100" : "opacity-0",
+                "transition-opacity"
+              )}
+            />
+          </>
+        )}
       </div>
     </CarouselContext.Provider>
   )
 }
 
 function CarouselContent({ className, ...props }: React.ComponentProps<"div">) {
-  const { carouselRef, orientation } = useCarousel()
+  const { carouselRef, orientation, api, wheelGestures } = useCarousel()
+  const viewportRef = React.useRef<HTMLDivElement | null>(null)
+  const setRefs = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      viewportRef.current = node
+      carouselRef(node)
+    },
+    [carouselRef]
+  )
+
+  React.useEffect(() => {
+    const el = viewportRef.current
+    if (!el || !api || !wheelGestures) return
+    let acc = 0
+    let last = 0
+    const THRESH = 40
+    const COOLDOWN = 220
+    const onWheel = (e: WheelEvent) => {
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+      if (delta === 0) return
+      e.preventDefault()
+      const now = Date.now()
+      acc += delta
+      if (Math.abs(acc) >= THRESH && now - last >= COOLDOWN) {
+        if (acc > 0) {
+          api.scrollNext()
+        } else {
+          api.scrollPrev()
+        }
+        last = now
+        acc = 0
+      }
+    }
+    el.addEventListener("wheel", onWheel, { passive: false })
+    return () => {
+      el.removeEventListener("wheel", onWheel as EventListener)
+    }
+  }, [api, wheelGestures])
 
   return (
     <div
-      ref={carouselRef}
+      ref={setRefs}
       className="overflow-hidden"
       data-slot="carousel-content"
     >
