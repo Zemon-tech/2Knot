@@ -4,6 +4,7 @@ import * as React from "react"
 import useEmblaCarousel, {
   type UseEmblaCarouselType,
 } from "embla-carousel-react"
+import { WheelGesturesPlugin } from "embla-carousel-wheel-gestures"
 import { ArrowLeft, ArrowRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -55,12 +56,26 @@ function Carousel({
   edgeFades = true,
   ...props
 }: React.ComponentProps<"div"> & CarouselProps) {
+  const pluginsWithWheel = React.useMemo(() => {
+    const base = (plugins as unknown as any[]) || []
+    if (wheelGestures) {
+      return [...base, WheelGesturesPlugin({ forceWheelAxis: orientation === "horizontal" ? "x" : "y" })] as unknown as CarouselPlugin
+    }
+    return base as unknown as CarouselPlugin
+  }, [plugins, wheelGestures, orientation])
+
+  const mergedOpts = React.useMemo(() => ({
+    dragFree: false,
+    skipSnaps: false,
+    align: "start" as const,
+    containScroll: "trimSnaps" as const,
+    ...opts,
+    axis: (orientation === "horizontal" ? "x" : "y") as "x" | "y",
+  }), [opts, orientation])
+
   const [carouselRef, api] = useEmblaCarousel(
-    {
-      ...opts,
-      axis: orientation === "horizontal" ? "x" : "y",
-    },
-    plugins
+    mergedOpts,
+    pluginsWithWheel
   )
   const [canScrollPrev, setCanScrollPrev] = React.useState(false)
   const [canScrollNext, setCanScrollNext] = React.useState(false)
@@ -161,51 +176,13 @@ function Carousel({
 }
 
 function CarouselContent({ className, ...props }: React.ComponentProps<"div">) {
-  const { carouselRef, orientation, api, wheelGestures } = useCarousel()
-  const viewportRef = React.useRef<HTMLDivElement | null>(null)
+  const { carouselRef, orientation } = useCarousel()
   const setRefs = React.useCallback(
     (node: HTMLDivElement | null) => {
-      viewportRef.current = node
       carouselRef(node)
     },
     [carouselRef]
   )
-
-  React.useEffect(() => {
-    const el = viewportRef.current
-    if (!el || !api || !wheelGestures) return
-    let acc = 0
-    let last = 0
-    let lastSign = 0
-    const THRESH = 160
-    const COOLDOWN = 340
-    const onWheel = (e: WheelEvent) => {
-      const horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.5
-      const delta = horizontal ? e.deltaX : e.deltaY
-      if (delta === 0) return
-      if (horizontal) e.preventDefault()
-      const now = Date.now()
-      const sign = delta > 0 ? 1 : -1
-      if (sign !== lastSign) {
-        acc = 0
-        lastSign = sign
-      }
-      acc += delta
-      if (Math.abs(acc) >= THRESH && now - last >= COOLDOWN) {
-        if (sign > 0) {
-          api.scrollNext()
-        } else {
-          api.scrollPrev()
-        }
-        last = now
-        acc = 0
-      }
-    }
-    el.addEventListener("wheel", onWheel, { passive: false })
-    return () => {
-      el.removeEventListener("wheel", onWheel as EventListener)
-    }
-  }, [api, wheelGestures])
 
   return (
     <div
