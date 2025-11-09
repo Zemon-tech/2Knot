@@ -30,6 +30,9 @@ export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streaming, setStreaming] = useState(false);
   const assistantBuffer = useRef('');
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
   const salutation = (() => {
@@ -79,6 +82,7 @@ export default function Chat() {
     setMessages((m) => [...m, { role: 'user', content: userText }]);
     setStreaming(true);
     assistantBuffer.current = '';
+    setAutoScroll(true);
     let convId = activeId || undefined;
     try {
       let finalConvId: string | undefined = convId;
@@ -112,6 +116,31 @@ export default function Chat() {
       setStreaming(false);
     }
   }
+
+  useEffect(() => {
+    const checkAtBottom = () => {
+      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
+      setShowScrollButton(!atBottom);
+      if (atBottom) setAutoScroll(true);
+    };
+    const handleWheel = () => {
+      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
+      if (!atBottom) setAutoScroll(false);
+    };
+    window.addEventListener('scroll', checkAtBottom, { passive: true });
+    window.addEventListener('wheel', handleWheel, { passive: true });
+    checkAtBottom();
+    return () => {
+      window.removeEventListener('scroll', checkAtBottom);
+      window.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (autoScroll && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, streaming, autoScroll]);
 
   // Chat no longer manages the sidebar list; creation/selection is handled in layout.
 
@@ -213,9 +242,23 @@ export default function Chat() {
                   <Shimmer className="text-base">Thinking…</Shimmer>
                 </div>
               )}
+              <div ref={bottomRef} />
             </div>
           )}
       </div>
+      {showScrollButton && (
+        <div className="fixed bottom-24 right-6 z-30">
+          <button
+            className="px-3 py-2 rounded-full bg-primary text-primary-foreground shadow border border-primary/70 text-sm"
+            onClick={() => {
+              setAutoScroll(true);
+              window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+            }}
+          >
+            Scroll to bottom
+          </button>
+        </div>
+      )}
       {messages.length > 0 && (
         <div className="sticky bottom-0 z-20 pointer-events-none">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pointer-events-auto">
