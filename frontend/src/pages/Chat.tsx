@@ -16,7 +16,7 @@ import {
   PromptInputActionAddAttachments,
 } from '@/components/ai-elements/prompt-input';
 import { useAuth } from '../context/AuthContext';
-import { PlusIcon, CopyIcon, PanelLeftIcon } from 'lucide-react';
+import { PlusIcon, CopyIcon, PanelLeftIcon, ArrowDown } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { Actions, Action } from '@/components/ai-elements/actions';
 import { useSidebar } from '@/components/ui/sidebar';
@@ -32,7 +32,8 @@ export default function Chat() {
   const assistantBuffer = useRef('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const [atTop, setAtTop] = useState(true);
 
   const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
   const salutation = (() => {
@@ -118,20 +119,22 @@ export default function Chat() {
   }
 
   useEffect(() => {
-    const checkAtBottom = () => {
-      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
-      setShowScrollButton(!atBottom);
-      if (atBottom) setAutoScroll(true);
+    const checkPosition = () => {
+      const isAtBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
+      const isAtTop = window.scrollY <= 8;
+      setAtBottom(isAtBottom);
+      setAtTop(isAtTop);
+      if (isAtBottom) setAutoScroll(true);
     };
     const handleWheel = () => {
-      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
-      if (!atBottom) setAutoScroll(false);
+      const isAtBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
+      if (!isAtBottom) setAutoScroll(false);
     };
-    window.addEventListener('scroll', checkAtBottom, { passive: true });
+    window.addEventListener('scroll', checkPosition, { passive: true });
     window.addEventListener('wheel', handleWheel, { passive: true });
-    checkAtBottom();
+    checkPosition();
     return () => {
-      window.removeEventListener('scroll', checkAtBottom);
+      window.removeEventListener('scroll', checkPosition);
       window.removeEventListener('wheel', handleWheel);
     };
   }, []);
@@ -246,16 +249,17 @@ export default function Chat() {
             </div>
           )}
       </div>
-      {showScrollButton && (
+      {((!streaming && !atBottom) || (streaming && atTop)) && (
         <div className="fixed bottom-24 right-6 z-30">
           <button
-            className="px-3 py-2 rounded-full bg-primary text-primary-foreground shadow border border-primary/70 text-sm"
+            aria-label="Scroll to bottom"
+            className="p-2 rounded-full bg-background/60 hover:bg-background/80 border border-border shadow-sm backdrop-blur text-foreground"
             onClick={() => {
               setAutoScroll(true);
               window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
             }}
           >
-            Scroll to bottom
+            <ArrowDown className="size-4" />
           </button>
         </div>
       )}
