@@ -6,6 +6,23 @@ const MessageSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     role: { type: String, enum: ['user', 'assistant'], required: true },
     content: { type: String, required: true },
+    // Optional: persisted web research artifacts attached to assistant messages
+    sources: [
+      new Schema(
+        {
+          id: { type: Number },
+          title: { type: String },
+          link: { type: String },
+          source: { type: String },
+          favicon: { type: String },
+          date: { type: String },
+          snippet: { type: String },
+        },
+        { _id: false }
+      ),
+    ],
+    webSummary: { type: String },
+    researchBrief: { type: String },
   },
   { timestamps: true }
 );

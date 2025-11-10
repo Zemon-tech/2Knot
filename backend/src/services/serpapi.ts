@@ -42,37 +42,83 @@ function isTrusted(url: string) {
   }
 }
 
+type BaseOpts = { num?: number; gl?: string; hl?: string; start?: number };
+
+async function callSerp(params: Record<string, string>) {
+  if (!env.SERPAPI_KEY) return null;
+  const search = new URLSearchParams({ api_key: env.SERPAPI_KEY, no_cache: 'true', ...params });
+  const url = `https://serpapi.com/search?${search.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  try { return await res.json(); } catch { return null; }
+}
+
+function normalizeOrganic(organic: any[]): WebResult[] {
+  const results: WebResult[] = (organic || [])
+    .map((r: any) => ({
+      title: String(r.title || ''),
+      link: String(r.link || ''),
+      snippet: (r.snippet || r.snippet_highlighted_words?.join(' ')) as string | undefined,
+      date: (r.date || r.date_published || r.snippet_date) as string | undefined,
+      source: (() => {
+        try { return new URL(r.link).hostname; } catch { return undefined; }
+      })(),
+    }))
+    .filter((r: WebResult) => {
+      try {
+        if (!r.title || !r.link) return false;
+        if (r.link.toLowerCase().includes('blocked')) return false;
+        const u = new URL(r.link);
+        if (!/^https?:$/.test(u.protocol)) return false;
+        return !!u.hostname;
+      } catch {
+        return false;
+      }
+    });
+  const trusted = results.filter((r) => isTrusted(r.link));
+  return (trusted.length ? trusted : results).slice(0, 10);
+}
+
+export async function serpGoogleLightSearch(query: string, opts?: BaseOpts) {
+  const data = await callSerp({
+    engine: 'google_light',
+    q: query,
+    num: String(opts?.num ?? 10),
+    gl: opts?.gl ?? 'us',
+    hl: opts?.hl ?? 'en',
+    start: String(opts?.start ?? 0),
+  });
+  if (!data) return [] as WebResult[];
+  const organic = Array.isArray(data?.organic_results) ? data.organic_results : [];
+  return normalizeOrganic(organic);
+}
+
+export async function serpGoogleNewsLightSearch(query: string, opts?: BaseOpts) {
+  const data = await callSerp({
+    engine: 'google_news_light',
+    q: query,
+    num: String(opts?.num ?? 10),
+    gl: opts?.gl ?? 'us',
+    hl: opts?.hl ?? 'en',
+    start: String(opts?.start ?? 0),
+  });
+  if (!data) return [] as WebResult[];
+  const news = Array.isArray(data?.news_results) ? data.news_results : Array.isArray(data?.organic_results) ? data.organic_results : [];
+  return normalizeOrganic(news);
+}
+
+// Backward-compatible default search using standard Google engine
 export async function serpSearch(query: string, opts?: { num?: number; gl?: string; hl?: string }) {
-  if (!env.SERPAPI_KEY) {
-    return [] as WebResult[];
-  }
-  const params = new URLSearchParams({
+  const data = await callSerp({
     engine: 'google',
     q: query,
-    api_key: env.SERPAPI_KEY,
-    no_cache: 'true',
     num: String(opts?.num ?? 10),
     gl: opts?.gl ?? 'us',
     hl: opts?.hl ?? 'en',
   });
-  const url = `https://serpapi.com/search?${params.toString()}`;
-  const res = await fetch(url);
-  if (!res.ok) return [] as WebResult[];
-  const data = await res.json();
+  if (!data) return [] as WebResult[];
   const organic = Array.isArray(data?.organic_results) ? data.organic_results : [];
-  const results: WebResult[] = organic.map((r: any) => ({
-    title: r.title as string,
-    link: r.link as string,
-    snippet: r.snippet as string | undefined,
-    date: (r.date || r.date_published) as string | undefined,
-    source: (() => {
-      try { return new URL(r.link).hostname; } catch { return undefined; }
-    })(),
-  }));
-
-  const trusted = results.filter((r) => isTrusted(r.link));
-  const fallback = trusted.length ? trusted : results;
-  return fallback.slice(0, 8);
+  return normalizeOrganic(organic).slice(0, 8);
 }
 
 export function renderCitations(results: WebResult[]): string {

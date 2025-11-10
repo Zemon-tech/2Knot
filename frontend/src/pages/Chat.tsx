@@ -31,9 +31,11 @@ import {
 } from '@/components/ai-elements/model-selector';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Actions, Action } from '@/components/ai-elements/actions';
+import { Task, TaskContent, TaskItem, TaskTrigger } from '@/components/ai-elements/task';
 import { useSidebar } from '@/components/ui/sidebar';
 
-type Message = { _id?: string; role: 'user' | 'assistant'; content: string };
+type WebSource = { id: number; title: string; link: string; source?: string; favicon?: string; date?: string; snippet?: string };
+type Message = { _id?: string; role: 'user' | 'assistant'; content: string; sources?: WebSource[]; webSummary?: string };
 
 export default function Chat() {
   const { user } = useAuth();
@@ -159,6 +161,24 @@ export default function Chat() {
                 return [...m.slice(0, -1), { ...last, content: assistantBuffer.current }];
               }
               return [...m, { role: 'assistant', content: assistantBuffer.current }];
+            });
+          },
+          onSources: (sources) => {
+            setMessages((m) => {
+              const last = m[m.length - 1];
+              if (last && last.role === 'assistant') {
+                return [...m.slice(0, -1), { ...last, sources }];
+              }
+              return [...m, { role: 'assistant', content: '', sources }];
+            });
+          },
+          onWebSummary: (summary) => {
+            setMessages((m) => {
+              const last = m[m.length - 1];
+              if (last && last.role === 'assistant') {
+                return [...m.slice(0, -1), { ...last, webSummary: summary }];
+              }
+              return [...m, { role: 'assistant', content: '', webSummary: summary }];
             });
           },
           onDone: ({ conversationId }) => {
@@ -367,18 +387,74 @@ export default function Chat() {
               {messages.map((m, idx) => (
                 m.role === 'assistant' ? (
                   <div key={idx} className="w-full">
+                    {/* Optional web findings summary */}
+                    {m.webSummary && (
+                      <div className="mb-3">
+                        <Task defaultOpen={false}>
+                          <TaskTrigger title="Research summary" />
+                          <TaskContent>
+                            <TaskItem>
+                              <AIResponse>{m.webSummary}</AIResponse>
+                            </TaskItem>
+                          </TaskContent>
+                        </Task>
+                      </div>
+                    )}
                     <AIResponse className="prose dark:prose-invert max-w-none">
                       {m.content}
                     </AIResponse>
-                    <Actions className="mt-2">
-                      <Action
-                        tooltip="Copy"
-                        label="Copy"
-                        onClick={() => navigator.clipboard?.writeText(m.content)}
-                      >
-                        <CopyIcon className="size-4" />
-                      </Action>
-                    </Actions>
+                    <div className="flex items-center justify-between mt-2">
+                      <div className="flex items-center gap-2">
+                        {Array.isArray(m.sources) && m.sources.length > 0 && (
+                          <div className="flex items-center gap-2 px-2 py-1 rounded-full bg-secondary border border-border">
+                            <span className="text-xs text-muted-foreground">Sources</span>
+                            <div className="flex items-center -space-x-1">
+                              {(() => {
+                                const unique: WebSource[] = [];
+                                const seenDomains = new Set<string>();
+                                for (const s of m.sources!) {
+                                  try {
+                                    const host = new URL(s.link).hostname;
+                                    if (seenDomains.has(host)) continue;
+                                    seenDomains.add(host);
+                                    unique.push(s);
+                                  } catch { continue; }
+                                }
+                                return unique.slice(0, 4).map((s) => (
+                                <a
+                                  key={s.id}
+                                  href={s.link}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={s.source || s.title}
+                                  className="inline-flex h-5 w-5 rounded-full overflow-hidden ring-1 ring-border bg-muted"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={(s.favicon && s.favicon.length > 0) ? s.favicon : (() => { try { const host = new URL(s.link).hostname; return `https://icons.duckduckgo.com/ip3/${host}.ico`; } catch { return ''; } })()}
+                                    alt={s.source || 'source'}
+                                    className="h-full w-full object-cover"
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                    }}
+                                  />
+                                </a>
+                                ));
+                              })()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <Actions className="mt-0">
+                        <Action
+                          tooltip="Copy"
+                          label="Copy"
+                          onClick={() => navigator.clipboard?.writeText(m.content)}
+                        >
+                          <CopyIcon className="size-4" />
+                        </Action>
+                      </Actions>
+                    </div>
                   </div>
                 ) : (
                   <Message key={idx} from={m.role}>

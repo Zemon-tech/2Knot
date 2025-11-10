@@ -51,7 +51,12 @@ export const api = {
   ai: {
     stream: (
       body: { conversationId?: string; message: string; provider?: 'gemini' | 'openrouter'; webSearch?: boolean },
-      handlers: { onDelta: (text: string) => void; onDone?: (data: { conversationId?: string }) => void }
+      handlers: {
+        onDelta: (text: string) => void;
+        onDone?: (data: { conversationId?: string }) => void;
+        onSources?: (sources: { id: number; title: string; link: string; source?: string; favicon?: string; date?: string; snippet?: string }[]) => void;
+        onWebSummary?: (summary: string) => void;
+      }
     ) => {
       const url = `${API_BASE}/ai/stream`;
       async function start() {
@@ -97,6 +102,8 @@ export const api = {
               try {
                 const evt = JSON.parse(payload);
                 if (evt.type === 'delta') handlers.onDelta(evt.delta as string);
+                if (evt.type === 'sources' && Array.isArray(evt.sources)) handlers.onSources?.(evt.sources);
+                if (evt.type === 'webSummary' && typeof evt.summary === 'string') handlers.onWebSummary?.(evt.summary);
                 if (evt.type === 'done') handlers.onDone?.({ conversationId: evt.conversationId as string });
               } catch {}
             }
