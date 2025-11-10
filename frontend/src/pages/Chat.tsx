@@ -18,7 +18,16 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { PlusIcon, CopyIcon, PanelLeftIcon, MoreVertical, Settings } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  ModelSelector,
+  ModelSelectorContent,
+  ModelSelectorInput,
+  ModelSelectorList,
+  ModelSelectorGroup,
+  ModelSelectorItem,
+  ModelSelectorEmpty,
+  ModelSelectorLogo,
+} from '@/components/ai-elements/model-selector';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Actions, Action } from '@/components/ai-elements/actions';
 import { useSidebar } from '@/components/ui/sidebar';
@@ -219,23 +228,21 @@ export default function Chat() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button aria-label="Menu" className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-input hover:bg-accent">
+              <button aria-label="Menu" className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent">
                 <MoreVertical className="size-4" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem className="justify-between">
+              <DropdownMenuItem
+                className="justify-between cursor-pointer"
+                onClick={() => setOpenModelDialog(true)}
+              >
                 <span className="truncate">
                   {provider === 'openrouter' ? selectedOpenRouterModel : 'Gemini'}
                 </span>
-                <button
-                  type="button"
-                  aria-label="Model settings"
-                  className="ml-2 inline-flex items-center justify-center h-7 w-7 rounded-sm hover:bg-accent"
-                  onClick={(e) => { e.stopPropagation(); setOpenModelDialog(true); }}
-                >
+                <span className="ml-2 inline-flex items-center justify-center h-7 w-7">
                   <Settings className="size-4" />
-                </button>
+                </span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -246,40 +253,45 @@ export default function Chat() {
 
   return (
     <>
-      <Dialog open={openModelDialog} onOpenChange={setOpenModelDialog}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Select OpenRouter Model</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-80 overflow-y-auto mt-2 border rounded-md">
-            {modelsLoading ? (
-              <div className="p-4 text-sm text-muted-foreground">Loading models…</div>
-            ) : openRouterModels.length === 0 ? (
-              <div className="p-4 text-sm text-muted-foreground">No models found.</div>
-            ) : (
-              <ul className="divide-y">
-                {openRouterModels.map((m) => (
-                  <li key={m.id}>
-                    <button
-                      type="button"
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-accent ${selectedOpenRouterModel === m.id ? 'bg-accent' : ''}`}
-                      onClick={() => {
-                        setSelectedOpenRouterModel(m.id);
-                        setOpenModelDialog(false);
-                        setProvider('openrouter');
-                      }}
-                      title={m.id}
-                    >
-                      <div className="font-medium truncate">{m.name || m.id}</div>
-                      <div className="text-xs text-muted-foreground truncate">{m.id}</div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+      <ModelSelector open={openModelDialog} onOpenChange={setOpenModelDialog}>
+        <ModelSelectorContent title="Select Model" className="sm:max-w-xl">
+          <ModelSelectorInput placeholder="Search models…" />
+          <ModelSelectorList>
+            {modelsLoading && (
+              <div className="p-3 text-sm text-muted-foreground">Loading models…</div>
             )}
-          </div>
-        </DialogContent>
-      </Dialog>
+            {!modelsLoading && (
+              <>
+                <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                <ModelSelectorGroup heading="OpenRouter">
+                  {openRouterModels.map((m) => (
+                    <ModelSelectorItem
+                      key={m.id}
+                      value={m.id}
+                      onSelect={() => {
+                        setSelectedOpenRouterModel(m.id);
+                        setProvider('openrouter');
+                        setOpenModelDialog(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-3 w-full">
+                        {(() => {
+                          const provider = (m.id.split('/')[0] || 'openrouter') as any;
+                          return <ModelSelectorLogo provider={provider} className="size-4" />;
+                        })()}
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-medium truncate">{m.name || m.id}</span>
+                          <span className="text-xs text-muted-foreground truncate">{m.id}</span>
+                        </div>
+                      </div>
+                    </ModelSelectorItem>
+                  ))}
+                </ModelSelectorGroup>
+              </>
+            )}
+          </ModelSelectorList>
+        </ModelSelectorContent>
+      </ModelSelector>
       <NavHeader />
       <div className="flex-1 overflow-visible">
           {messages.length === 0 ? (
