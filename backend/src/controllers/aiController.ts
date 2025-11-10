@@ -152,16 +152,35 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
         .sort({ createdAt: 1 })
         .lean();
 
-      // Keep only the most recent 30 turns (messages) to stay well within context limits
-      const MAX_TURNS = 30;
+      // Keep a larger recent window, trimmed by a rough character budget to preserve context
+      const MAX_TURNS = 100;
+      const approxBudget = 16000; // chars; model/token dependent, safe heuristic
       const recent = history.slice(Math.max(0, history.length - MAX_TURNS));
+      const reversed = [...recent].reverse();
+      const kept: { role: 'user' | 'assistant'; content: string }[] = [];
+      let acc = 0;
+      for (const m of reversed) {
+        const text = m.content || '';
+        const len = text.length;
+        if (acc + len > approxBudget) break;
+        kept.push({ role: m.role as 'user' | 'assistant', content: text });
+        acc += len;
+      }
+      kept.reverse();
+      const chatMessages = kept;
 
-      const chatMessages = recent.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+      const extra: any = {};
+      if (provider === 'openrouter') {
+        // Help OpenRouter attribute per-conversation usage and enable transform to retain salient history
+        extra.user = `${userId}:${convId}`; // stable user+conversation key
+        extra.transforms = ['middle-out'];
+      }
 
       response = await streamText({
         model: openAIProvider.chat(modelId),
         system: SYSTEM_PROMPT,
         messages: chatMessages,
+        ...extra,
       });
     } catch (err) {
       // If model call fails before streaming starts, propagate a 502 without sending SSE headers
