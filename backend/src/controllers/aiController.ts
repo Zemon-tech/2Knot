@@ -9,6 +9,7 @@ import { env } from '../config/env';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenRouterClient, getOpenRouterModelId } from '../ai/openrouterProvider';
 import { streamText, generateText } from 'ai';
+import { serpSearch, renderCitations } from '../services/serpapi';
 
 // Load system prompt from file with fallback
 const SYSTEM_PROMPT: string = (() => {
@@ -28,6 +29,23 @@ const SYSTEM_PROMPT: string = (() => {
     } catch {}
   }
   return 'You are a helpful assistant.';
+})();
+
+// Load web search prompt for query optimization
+const WEBSEARCH_PROMPT: string = (() => {
+  const candidates = [
+    path.resolve(__dirname, '../prompts/websearch.md'),
+    path.resolve(process.cwd(), 'backend/src/prompts/websearch.md'),
+    path.resolve(process.cwd(), 'backend/dist/prompts/websearch.md'),
+  ];
+  for (const p of candidates) {
+    try {
+      if (existsSync(p)) {
+        return readFileSync(p, 'utf8');
+      }
+    } catch {}
+  }
+  return 'Output a concise, precise web search query string for the user request. No extra words.';
 })();
 
 // POST /api/ai/title
@@ -116,7 +134,7 @@ Return only the title.`;
 export async function streamAIResponse(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const userId = req.user!.userId;
-    const { conversationId, message } = req.body as { conversationId?: string; message: string };
+    const { conversationId, message, webSearch } = req.body as { conversationId?: string; message: string; webSearch?: boolean };
     if (!message) throw createError(400, 'Message is required');
 
     let convId = conversationId;
@@ -176,9 +194,30 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
         extra.transforms = ['middle-out'];
       }
 
+      // Optional: perform web search to augment context
+      let augmentedSystem = SYSTEM_PROMPT;
+      if (webSearch && env.SERPAPI_KEY) {
+        try {
+          // Generate optimized query
+          const { text: query } = await generateText({
+            model: openAIProvider.chat(modelId),
+            system: WEBSEARCH_PROMPT,
+            messages: [
+              { role: 'user', content: message },
+            ],
+          });
+          const q = (query || message).trim().slice(0, 300);
+          const results = await serpSearch(q);
+          const citations = renderCitations(results);
+          if (citations) {
+            augmentedSystem = `${SYSTEM_PROMPT}\n\nWhen using web results, prefer authoritative sources. If you directly use information from a source, add bracketed references like [1], [2].${citations}`;
+          }
+        } catch {}
+      }
+
       response = await streamText({
         model: openAIProvider.chat(modelId),
-        system: SYSTEM_PROMPT,
+        system: augmentedSystem,
         messages: chatMessages,
         ...extra,
       });

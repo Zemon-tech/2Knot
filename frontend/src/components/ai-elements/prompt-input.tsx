@@ -42,6 +42,7 @@ import {
   MicIcon,
   PaperclipIcon,
   PlusIcon,
+  GlobeIcon,
   SendIcon,
   SquareIcon,
   XIcon,
@@ -393,6 +394,43 @@ export const PromptInputActionAddAttachments = ({
       }}
     >
       <ImageIcon className="mr-2 size-4" /> {label}
+    </DropdownMenuItem>
+  );
+};
+
+export type PromptInputActionToggleWebSearchProps = ComponentProps<
+  typeof DropdownMenuItem
+> & {
+  checked: boolean;
+  onCheckedChange: (next: boolean) => void;
+  label?: string;
+};
+
+export const PromptInputActionToggleWebSearch = ({
+  checked,
+  onCheckedChange,
+  label = "Use web search (SerpAPI)",
+  ...props
+}: PromptInputActionToggleWebSearchProps) => {
+  return (
+    <DropdownMenuItem
+      {...props}
+      className={cn("justify-between", props.className)}
+      onSelect={(e) => {
+        e.preventDefault();
+        onCheckedChange(!checked);
+      }}
+    >
+      <span className="inline-flex items-center gap-2">
+        <GlobeIcon className="size-4" /> {label}
+      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        readOnly
+        aria-label={label}
+        className="ml-2 pointer-events-none"
+      />
     </DropdownMenuItem>
   );
 };

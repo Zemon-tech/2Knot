@@ -25,6 +25,6 @@ export const env = {
   OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || 'openrouter/auto',
   OPENROUTER_REFERER: process.env.OPENROUTER_REFERER || '',
   OPENROUTER_TITLE: process.env.OPENROUTER_TITLE || 'Quild AI',
+  // SerpAPI configuration (optional; only required if web search is enabled)
+  SERPAPI_KEY: process.env.SERPAPI_KEY || '',
 };
-
-

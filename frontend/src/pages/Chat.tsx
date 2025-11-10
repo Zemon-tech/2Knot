@@ -14,6 +14,7 @@ import {
   PromptInputActionMenuContent,
   PromptInputActionMenuItem,
   PromptInputActionAddAttachments,
+  PromptInputActionToggleWebSearch,
 } from '@/components/ai-elements/prompt-input';
 import { useAuth } from '../context/AuthContext';
 import { PlusIcon, CopyIcon, PanelLeftIcon, MoreVertical, Settings } from 'lucide-react';
@@ -51,6 +52,7 @@ export default function Chat() {
   const [openRouterModels, setOpenRouterModels] = useState<{ id: string; name?: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState<string>('openrouter/auto');
+  const [webSearch, setWebSearch] = useState<boolean>(false);
 
   const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
   const salutation = (() => {
@@ -91,6 +93,8 @@ export default function Chat() {
       if (saved === 'gemini' || saved === 'openrouter') setProvider(saved);
       const savedModel = localStorage.getItem('openrouterModel');
       if (savedModel) setSelectedOpenRouterModel(savedModel);
+      const ws = localStorage.getItem('webSearch');
+      if (ws === '1') setWebSearch(true);
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -104,6 +108,11 @@ export default function Chat() {
       if (selectedOpenRouterModel) localStorage.setItem('openrouterModel', selectedOpenRouterModel);
     } catch {}
   }, [selectedOpenRouterModel]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('webSearch', webSearch ? '1' : '0');
+    } catch {}
+  }, [webSearch]);
 
   useEffect(() => {
     if (openModelDialog) {
@@ -140,7 +149,7 @@ export default function Chat() {
     try {
       let finalConvId: string | undefined = convId;
       await api.ai.stream(
-        { conversationId: convId, message: userText, provider },
+        { conversationId: convId, message: userText, provider, webSearch },
         {
           onDelta: (delta: string) => {
             assistantBuffer.current += delta;
@@ -244,6 +253,18 @@ export default function Chat() {
                   <Settings className="size-4" />
                 </span>
               </DropdownMenuItem>
+              <DropdownMenuItem
+                className="justify-between cursor-pointer"
+                onClick={() => setWebSearch((v) => !v)}
+              >
+                <span className="truncate">Use web search (SerpAPI)</span>
+                <input
+                  type="checkbox"
+                  checked={webSearch}
+                  readOnly
+                  className="ml-2 pointer-events-none"
+                />
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -312,6 +333,10 @@ export default function Chat() {
                       </PromptInputActionMenuTrigger>
                       <PromptInputActionMenuContent>
                         <PromptInputActionAddAttachments />
+                        <PromptInputActionToggleWebSearch
+                          checked={webSearch}
+                          onCheckedChange={setWebSearch}
+                        />
                         <PromptInputActionMenuItem>Create image</PromptInputActionMenuItem>
                         <PromptInputActionMenuItem>Thinking</PromptInputActionMenuItem>
                         <PromptInputActionMenuItem>Deep research</PromptInputActionMenuItem>
@@ -402,6 +427,10 @@ export default function Chat() {
                     </PromptInputActionMenuTrigger>
                     <PromptInputActionMenuContent>
                       <PromptInputActionAddAttachments />
+                      <PromptInputActionToggleWebSearch
+                        checked={webSearch}
+                        onCheckedChange={setWebSearch}
+                      />
                     </PromptInputActionMenuContent>
                   </PromptInputActionMenu>
                 </PromptInputLeftAddon>
