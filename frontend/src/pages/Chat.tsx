@@ -316,6 +316,23 @@ export default function Chat() {
             {!modelsLoading && (
               <>
                 <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+                <ModelSelectorGroup heading="Gemini (Direct)">
+                  <ModelSelectorItem
+                    value="gemini-2.0-flash"
+                    onSelect={() => {
+                      setProvider('gemini');
+                      setOpenModelDialog(false);
+                    }}
+                  >
+                    <div className="flex items-center gap-3 w-full">
+                      <ModelSelectorLogo provider={"google" as any} className="size-4" />
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-medium truncate">Gemini 2.0 Flash</span>
+                        <span className="text-xs text-muted-foreground truncate">gemini-2.0-flash</span>
+                      </div>
+                    </div>
+                  </ModelSelectorItem>
+                </ModelSelectorGroup>
                 <ModelSelectorGroup heading="OpenRouter">
                   {openRouterModels.map((m) => (
                     <ModelSelectorItem

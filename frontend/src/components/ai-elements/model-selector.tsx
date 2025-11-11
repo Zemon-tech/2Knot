@@ -13,6 +13,7 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ export const ModelSelectorContent = ({
 }: ModelSelectorContentProps) => (
   <DialogContent className={cn("p-0", className)} {...props}>
     <DialogTitle className="sr-only">{title}</DialogTitle>
+    <DialogDescription className="sr-only">Select and search models.</DialogDescription>
     <Command className="**:data-[slot=command-input-wrapper]:h-auto">
       {children}
     </Command>

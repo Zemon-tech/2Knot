@@ -86,7 +86,7 @@ export async function generateConversationTitle(req: AuthenticatedRequest, res: 
     const combined = msgs
       .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
       .join('\n')
-      .slice(0, 8000); // keep prompt bounded
+      .slice(0, 4000); // keep prompt bounded tighter to reduce token usage
 
     const provider = (req.body?.provider as 'gemini' | 'openrouter' | undefined) || env.AI_PROVIDER;
     let modelId: string;
@@ -117,6 +117,8 @@ Return only the title.`;
         messages: [
           { role: 'user', content: `Conversation transcript (truncated):\n\n${combined}` },
         ],
+        // Very small cap for title generation
+        maxOutputTokens: 24,
       });
       title = (text || '').trim();
     } catch (err) {
@@ -201,9 +203,10 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
         .sort({ createdAt: 1 })
         .lean();
 
-      // Keep a larger recent window, trimmed by a rough character budget to preserve context
-      const MAX_TURNS = 100;
-      const approxBudget = 16000; // chars; model/token dependent, safe heuristic
+      // Keep a recent window, trimmed by a rough character budget to preserve context
+      // Use a smaller budget for OpenRouter to avoid exceeding credit-based token limits
+      const MAX_TURNS = providerName === 'openrouter' ? 40 : 100;
+      const approxBudget = providerName === 'openrouter' ? 6000 : 16000; // chars; model/token dependent
       const recent = history.slice(Math.max(0, history.length - MAX_TURNS));
       const reversed = [...recent].reverse();
       const kept: { role: 'user' | 'assistant'; content: string }[] = [];
@@ -245,6 +248,7 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
             messages: [
               { role: 'user', content: message },
             ],
+            maxOutputTokens: 256,
           });
           let planned: { query: string }[] = [];
           try {
@@ -256,16 +260,41 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
               model: openAIProvider.chat(modelId),
               system: WEBSEARCH_PROMPT,
               messages: [{ role: 'user', content: message }],
+              maxOutputTokens: 64,
             });
             planned = [{ query: (query || message).trim().slice(0, 300) }];
           }
           if (planned.length === 0) planned = [{ query: message.slice(0, 300) }];
 
-          // Intent: detect news vs general
-          const intentIsNews = /\b(news|latest|today|this week|breaking|headline|update|updates|trending|trend)\b/i.test(message);
-          // Recency bias for news queries
-          const wantsToday = /\b(today|now|latest)\b/i.test(message);
-          const tbs = intentIsNews ? (wantsToday ? 'qdr:d' : 'qdr:w') : undefined; // day or week
+          // Intent: detect news vs general (must be declared before normalizeQuery uses them)
+          const intentIsNews = /\b(news|latest|today|this week|breaking|headline|update|updates|trending|trend|live)\b/i.test(message);
+          // Recency bias for news queries (hour/day/week granularity)
+          const wantsHour = /\b(now|breaking|just now|live)\b/i.test(message);
+          const wantsToday = /\b(today|latest)\b/i.test(message);
+          const wantsWeek = /\b(this week|past week|last week)\b/i.test(message);
+
+          // Normalize queries: remove temporal fluff and add explicit time anchors for news
+          const now = new Date();
+          const year = now.getUTCFullYear();
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const month = monthNames[now.getUTCMonth()];
+          const temporalFluff = /\b(latest|breaking|update|updates|up-to-date|today|now|live|this week|past week|last week|recent)\b/gi;
+          function hasRecentYear(q: string) {
+            return /(20\d{2})/.test(q);
+          }
+          function normalizeQuery(q: string): string {
+            let out = (q || '').replace(temporalFluff, ' ').replace(/\s+/g, ' ').trim();
+            if (!intentIsNews) return out;
+            if (hasRecentYear(out)) return out;
+            // Prefer month+year for hour/day recency, year for week
+            if (wantsHour || wantsToday) return `${out} ${month} ${year}`.trim();
+            if (wantsWeek) return `${out} ${year}`.trim();
+            return `${out} ${year}`.trim();
+          }
+          planned = planned.map((p) => ({ query: normalizeQuery(p.query).slice(0, 300) }));
+          const tbs = intentIsNews
+            ? (wantsHour ? 'qdr:h' : wantsToday ? 'qdr:d' : wantsWeek ? 'qdr:w' : undefined)
+            : undefined;
 
           // Locale options
           const gl = (web?.gl || '').toLowerCase() || 'us';
@@ -324,6 +353,8 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
             })(),
           }));
 
+          // Defer emitting sources until after streaming completes (sent near the end)
+
           // status: fetching (article content)
           try { res.write(`data: ${JSON.stringify({ type: 'status', phase: 'fetching' })}\n\n`); } catch {}
           // Fetch main content from top articles to reduce shallow synthesis
@@ -343,6 +374,10 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
               return `(${i + 1}) ${r.title} — ${src}${date}\n${basis}`.trim();
             }).join('\n\n');
             researchBrief = `Web research findings for the user's request. Use ONLY these as factual grounding. Cite inline with (n) referencing the numbered sources where appropriate.\n\n${briefLines}`;
+            // Cap research brief length for OpenRouter to manage token costs
+            if (providerName === 'openrouter' && researchBrief) {
+              researchBrief = researchBrief.slice(0, 2000);
+            }
           } catch {}
 
           // status: summarizing (preparing findings for final answer)
@@ -352,6 +387,15 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
 
       // Assemble model call with optional research brief as a system preface
       const systemParts = [SYSTEM_PROMPT];
+      // Inject dynamic current time/date and locale context for better temporal awareness
+      const tzOffsetMin = -new Date().getTimezoneOffset();
+      const sign = tzOffsetMin >= 0 ? '+' : '-';
+      const pad = (n: number) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+      const tz = `UTC${sign}${pad(tzOffsetMin / 60)}:${pad(tzOffsetMin % 60)}`;
+      const nowIso = new Date().toISOString();
+      const gl = (web?.gl || '').toLowerCase() || 'us';
+      const hl = (web?.hl || '').toLowerCase() || 'en';
+      systemParts.push(`\n\nCurrent Context:\n- Now (ISO): ${nowIso}\n- Timezone: ${tz}\n- Locale gl: ${gl}\n- Locale hl: ${hl}`);
       if (WEBSYNTH_PROMPT) {
         systemParts.push('\n\n' + WEBSYNTH_PROMPT);
       }
@@ -364,12 +408,32 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
 
       // status: answering
       try { res.write(`data: ${JSON.stringify({ type: 'status', phase: 'answering' })}\n\n`); } catch {}
-      response = await streamText({
-        model: openAIProvider.chat(modelId),
-        system: finalSystem,
-        messages: chatMessages,
-        ...extra,
-      });
+      const initialMax = providerName === 'openrouter' ? 128 : 2048;
+      try {
+        response = await streamText({
+          model: openAIProvider.chat(modelId),
+          system: finalSystem,
+          messages: chatMessages,
+          // Smaller cap for OpenRouter to reduce credit usage
+          maxOutputTokens: initialMax,
+          ...extra,
+        });
+      } catch (e: any) {
+        const code = e?.statusCode ?? e?.data?.error?.code;
+        // On OpenRouter credit errors, retry with a much smaller cap and reduced context window
+        if (providerName === 'openrouter' && code === 402) {
+          const shorter = chatMessages.slice(-6);
+          response = await streamText({
+            model: openAIProvider.chat(modelId),
+            system: finalSystem,
+            messages: shorter,
+            maxOutputTokens: 64,
+            ...extra,
+          });
+        } else {
+          throw e;
+        }
+      }
     } catch (err) {
       // If model call fails: if headers already sent, send SSE error and end; otherwise delegate to error handler
       if (res.headersSent) {
