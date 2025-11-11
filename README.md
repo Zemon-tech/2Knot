@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/2%20Knot.png" alt="Quild AI Cover" width="100%" />
+</p>
+
 <div align="center">
 
 # Quild AI
@@ -26,10 +30,6 @@ Clean, fast, and secure AI chat backend + frontend. Streamed AI answers, optiona
     </td>
   </tr>
   <tr>
-    <td align="center">
-      <img src="docs/images/sidebar.png" alt="Sidebar" width="360" />
-      <div><b>Sidebar</b></div>
-    </td>
     <td align="center">
       <img src="docs/images/model-selector.png" alt="Model Selector" width="360" />
       <div><b>Model Selector</b></div>
