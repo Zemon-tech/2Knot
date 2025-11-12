@@ -30,11 +30,13 @@ const messageContentVariants = cva(
       variant: {
         contained: [
           "max-w-[80%] px-3 py-1",
-          "group-[.is-user]:bg-primary group-[.is-user]:text-primary-foreground",
+          "group-[.is-user]:bg-[#F6F6F6] group-[.is-user]:text-foreground",
+          "group-[.is-user]:dark:bg-[#242424] group-[.is-user]:dark:text-white",
           "group-[.is-assistant]:bg-secondary group-[.is-assistant]:text-foreground",
         ],
         flat: [
-          "group-[.is-user]:max-w-[80%] group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-2 group-[.is-user]:text-foreground",
+          "group-[.is-user]:max-w-[80%] group-[.is-user]:bg-[#F6F6F6] group-[.is-user]:px-4 group-[.is-user]:py-2 group-[.is-user]:text-foreground",
+          "group-[.is-user]:dark:bg-[#242424] group-[.is-user]:dark:text-white",
           "group-[.is-assistant]:text-foreground",
         ],
       },
