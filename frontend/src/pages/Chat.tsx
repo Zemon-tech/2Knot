@@ -15,6 +15,7 @@ import {
   PromptInputActionMenuItem,
   PromptInputActionAddAttachments,
   PromptInputActionToggleWebSearch,
+  PromptInputActiveModeWebsearch,
 } from '@/components/ai-elements/prompt-input';
 import { useAuth } from '../context/AuthContext';
 import { PlusIcon, CopyIcon, PanelLeftIcon, MoreVertical, Settings } from 'lucide-react';
@@ -285,18 +286,7 @@ export default function Chat() {
                   <Settings className="size-4" />
                 </span>
               </DropdownMenuItem>
-              <DropdownMenuItem
-                className="justify-between cursor-pointer"
-                onClick={() => setWebSearch((v) => !v)}
-              >
-                <span className="truncate">Use web search (SerpAPI)</span>
-                <input
-                  type="checkbox"
-                  checked={webSearch}
-                  readOnly
-                  className="ml-2 pointer-events-none"
-                />
-              </DropdownMenuItem>
+              {null}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -373,7 +363,7 @@ export default function Chat() {
                   onSubmit={async ({ text }) => {
                     if (text) await onSend(text);
                   }}
-                  groupClassName="rounded-3xl bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input"
+                  groupClassName={`${webSearch ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
                 >
                   <PromptInputLeftAddon>
                     <PromptInputActionMenu>
@@ -392,6 +382,12 @@ export default function Chat() {
                         <PromptInputActionMenuItem>Study and learn</PromptInputActionMenuItem>
                       </PromptInputActionMenuContent>
                     </PromptInputActionMenu>
+                    {webSearch && (
+                      <PromptInputActiveModeWebsearch
+                        active={webSearch}
+                        onClick={() => setWebSearch(false)}
+                      />
+                    )}
                   </PromptInputLeftAddon>
                   <PromptInputTextarea
                     placeholder=""
@@ -403,6 +399,7 @@ export default function Chat() {
                     ]}
                     suggestionInterval={3000}
                     className="py-2"
+                    forceMultilineLayout={webSearch}
                   />
                   <PromptInputFooter>
                     <div />
@@ -540,7 +537,7 @@ export default function Chat() {
                 onSubmit={async ({ text }) => {
                   if (text) await onSend(text);
                 }}
-                groupClassName="rounded-3xl bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input"
+                groupClassName={`${webSearch ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
               >
                 <PromptInputLeftAddon>
                   <PromptInputActionMenu>
@@ -555,11 +552,18 @@ export default function Chat() {
                       />
                     </PromptInputActionMenuContent>
                   </PromptInputActionMenu>
+                  {webSearch && (
+                    <PromptInputActiveModeWebsearch
+                      active={webSearch}
+                      onClick={() => setWebSearch(false)}
+                    />
+                  )}
                 </PromptInputLeftAddon>
                 <PromptInputTextarea
                   placeholder="Send a message"
                   suggestions={[]}
                   className="py-2"
+                  forceMultilineLayout={webSearch}
                 />
                 <PromptInputFooter>
                   <div />

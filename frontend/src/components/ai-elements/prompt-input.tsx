@@ -409,7 +409,7 @@ export type PromptInputActionToggleWebSearchProps = ComponentProps<
 export const PromptInputActionToggleWebSearch = ({
   checked,
   onCheckedChange,
-  label = "Use web search (SerpAPI)",
+  label = "Websearch",
   ...props
 }: PromptInputActionToggleWebSearchProps) => {
   return (
@@ -424,13 +424,6 @@ export const PromptInputActionToggleWebSearch = ({
       <span className="inline-flex items-center gap-2">
         <GlobeIcon className="size-4" /> {label}
       </span>
-      <input
-        type="checkbox"
-        checked={checked}
-        readOnly
-        aria-label={label}
-        className="ml-2 pointer-events-none"
-      />
     </DropdownMenuItem>
   );
 };
@@ -830,6 +823,7 @@ export type PromptInputTextareaProps = ComponentProps<
 > & {
   suggestions?: string[];
   suggestionInterval?: number;
+  forceMultilineLayout?: boolean;
 };
 
 export const PromptInputTextarea = ({
@@ -838,6 +832,7 @@ export const PromptInputTextarea = ({
   placeholder = "What would you like to know?",
   suggestions = [],
   suggestionInterval = 3000,
+  forceMultilineLayout,
   ...props
 }: PromptInputTextareaProps) => {
   const controller = useOptionalPromptInputController();
@@ -996,7 +991,7 @@ export const PromptInputTextarea = ({
       className={cn("field-sizing-content min-h-0 overflow-y-auto py-2 text-sm leading-6", flipClass, className)}
       name="message"
       rows={1}
-      data-multiline={isMultiline ? 'true' : 'false'}
+      data-multiline={(forceMultilineLayout || isMultiline) ? 'true' : 'false'}
       onCompositionEnd={() => setIsComposing(false)}
       onCompositionStart={() => setIsComposing(true)}
       onKeyDown={(e) => { handleKeyDown(e); queueMicrotask(autosize); }}
@@ -1113,6 +1108,37 @@ export const PromptInputActionMenuTrigger = ({
     </PromptInputButton>
   </DropdownMenuTrigger>
 );
+
+export type PromptInputActiveModeWebsearchProps = {
+  active: boolean;
+  onClick: () => void;
+  label?: string;
+  className?: string;
+};
+
+export const PromptInputActiveModeWebsearch = ({
+  active,
+  onClick,
+  label = "Websearch",
+  className,
+}: PromptInputActiveModeWebsearchProps) => {
+  return (
+    <PromptInputButton
+      type="button"
+      size="sm"
+      variant="ghost"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "px-2 gap-1 text-primary hover:bg-accent",
+        className
+      )}
+    >
+      <GlobeIcon className="size-4" />
+      <span className="text-sm">{label}</span>
+    </PromptInputButton>
+  );
+};
 
 export type PromptInputActionMenuContentProps = ComponentProps<
   typeof DropdownMenuContent
