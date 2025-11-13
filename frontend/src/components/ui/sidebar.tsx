@@ -857,7 +857,7 @@ function SidebarUserButton({ email, name, avatarUrl, onLogout }: SidebarUserButt
 
       {/* Settings Dialog */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
             <DialogDescription>Manage your preferences.</DialogDescription>
@@ -884,7 +884,7 @@ function SidebarUserButton({ email, name, avatarUrl, onLogout }: SidebarUserButt
                       }}
                       className={cn(
                         'px-3 py-1.5 rounded-md border text-sm',
-                        theme===t ? 'bg-primary text-primary-foreground border-primary' : ''
+                        theme===t ? 'bg-muted text-foreground border-input' : ''
                       )}
                     >
                       {t[0].toUpperCase()+t.slice(1)}
@@ -892,31 +892,7 @@ function SidebarUserButton({ email, name, avatarUrl, onLogout }: SidebarUserButt
                   ))}
                 </div>
               </section>
-              <section className="space-y-2">
-                <div className="text-sm font-medium">Accent color</div>
-                <div className="grid grid-cols-4 gap-2">
-                  {['blue','violet','emerald','rose','indigo','cyan','teal','orange','amber','pink'].map((c) => (
-                    <button
-                      key={c}
-                      aria-label={c}
-                      onClick={() => setAccent(c)}
-                      className={cn(
-                        'h-9 rounded-md border flex items-center justify-center text-xs capitalize',
-                        accent===c ? 'ring-2 ring-primary' : ''
-                      )}
-                      style={{
-                        // preview swatch using oklch via current theme tokens in CSS
-                        background:
-                          c==='blue' ? 'oklch(0.624 0.171 254.624)' :
-                          c==='violet' ? 'oklch(0.594 0.244 300.31)' :
-                          c==='emerald' ? 'oklch(0.74 0.154 160.59)' :
-                          'oklch(0.65 0.25 17.75)',
-                        color: 'white'
-                      }}
-                    >{c}</button>
-                  ))}
-                </div>
-              </section>
+              
             </div>
           </div>
         </DialogContent>

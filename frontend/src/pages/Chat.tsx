@@ -234,16 +234,21 @@ export default function Chat() {
     const checkPosition = () => {
       const isAtTop = window.scrollY <= 8;
       setAtTop(isAtTop);
+      const doc = document.documentElement;
+      const isAtBottom = window.innerHeight + window.scrollY >= (doc.scrollHeight - 8);
+      setAtBottom(isAtBottom);
     };
     const handleWheel = (e: WheelEvent) => {
       // If the user scrolls upward, disable autoscroll until they click "Get to latest"
       if (e.deltaY < 0) setAutoScroll(false);
     };
     window.addEventListener('scroll', checkPosition, { passive: true });
+    window.addEventListener('resize', checkPosition, { passive: true } as any);
     window.addEventListener('wheel', handleWheel, { passive: true });
     checkPosition();
     return () => {
       window.removeEventListener('scroll', checkPosition);
+      window.removeEventListener('resize', checkPosition as any);
       window.removeEventListener('wheel', handleWheel);
     };
   }, []);
@@ -266,12 +271,15 @@ export default function Chat() {
       (entries) => {
         const entry = entries[0];
         const atBottomNow = entry.isIntersecting;
-        setAtBottom(atBottomNow);
+        // When the anchor comes into view, we can safely re-enable autoscroll.
         if (atBottomNow) setAutoScroll(true);
       },
       {
         root: null,
-        threshold: 0.99,
+        threshold: 0,
+        // Account for sticky composer height so the anchor only intersects
+        // when near the real bottom of the scrollable document.
+        rootMargin: '0px 0px -160px 0px',
       }
     );
 

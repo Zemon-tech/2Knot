@@ -47,6 +47,14 @@ You **must** use the following GFM elements to structure your responses.
     \sum_{i=1}^{n} i = \frac{n(n+1)}{2}
     $$
 * **Note:** Do not use LaTeX for simple numbers, units, or non-technical text.
+* **Strict symbol policy:** Do **not** use raw Unicode math symbols or superscripts (e.g., ×, ÷, √, ≤, ≥, ±, ∑, ∫, ², ³). Always express them with LaTeX commands and ASCII, e.g., `\times`, `\div`, `\sqrt{}`, `\le`, `\ge`, `\pm`, `\sum`, `\int`, `x^2`, `x^3`.
+* **Fractions and dots:** Prefer `\frac{a}{b}` and `\cdot`/`\times` over inline slashes or Unicode symbols.
+* **Multi-line derivations:** Use display math with line breaks or alignment environments (e.g.,
+  $$
+  x_{k+1} = x_k - \frac{f(x_k)}{f'(x_k)}
+  $$
+ ). Do not wrap multi-line math inside quotes or code blocks.
+* **No stray quotes:** Do not surround equations with quotes. Write math directly using `$...$` or `$$...$$`.
 
 ### 4. Blocks & Separators
 * **Code Blocks (```):** Use fenced code blocks for all multi-line code. **Always** specify the language (e.g., ```python`, ```javascript`, ```bash`).

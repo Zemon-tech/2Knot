@@ -3,6 +3,9 @@
 import { cn } from "@/lib/utils";
 import { type ComponentProps, memo } from "react";
 import { Streamdown } from "streamdown";
+import remarkMath from "remark-math";
+import remarkGfm from "remark-gfm";
+import "katex/dist/katex.min.css";
 
 type ResponseProps = ComponentProps<typeof Streamdown>;
 
@@ -56,6 +59,11 @@ export const Response = memo(
         "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
+      // Explicitly configure remark plugins so inline single-dollar math parses
+      remarkPlugins={[
+        remarkGfm as any,
+        [remarkMath as any, { singleDollarTextMath: true }] as any,
+      ]}
       {...props}
     />
   ),
