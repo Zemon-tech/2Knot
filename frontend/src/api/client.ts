@@ -50,7 +50,7 @@ export const api = {
   },
   ai: {
     stream: (
-      body: { conversationId?: string; message: string; provider?: 'gemini' | 'openrouter'; webSearch?: boolean; web?: { gl?: string; hl?: string; location?: string; num?: number; maxSources?: number } },
+      body: { conversationId?: string; message: string; provider?: 'gemini' | 'openrouter' | 'groq'; webSearch?: boolean; web?: { gl?: string; hl?: string; location?: string; num?: number; maxSources?: number } },
       handlers: {
         onDelta: (text: string) => void;
         onDone?: (data: { conversationId?: string }) => void;
@@ -114,7 +114,7 @@ export const api = {
         return true;
       });
     },
-    title: async (conversationId: string, provider?: 'gemini' | 'openrouter') => {
+    title: async (conversationId: string, provider?: 'gemini' | 'openrouter' | 'groq') => {
       const path = `/ai/title`;
       const options: RequestInit = { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ conversationId, provider }) };
       let res = await fetch(`${API_BASE}${path}`, options);
@@ -129,6 +129,8 @@ export const api = {
       }
       return res.json() as Promise<{ title: string }>;
     },
+    modelsOpenRouter: () => request<{ models: { id: string; name?: string }[] }>(`/ai/models/openrouter`),
+    modelsGroq: () => request<{ models: { id: string; name?: string }[] }>(`/ai/models/groq`),
   },
 };
 

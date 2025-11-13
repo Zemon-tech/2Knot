@@ -8,6 +8,7 @@ import { MessageModel } from '../models/Message';
 import { env } from '../config/env';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenRouterClient, getOpenRouterModelId } from '../ai/openrouterProvider';
+import { createGroqClient, getGroqModelId } from '../ai/groqProvider';
 import { streamText, generateText } from 'ai';
 import { serpSearch, serpGoogleLightSearch, serpGoogleNewsLightSearch, renderCitations, WebResult, fetchTopArticlesText } from '../services/serpapi';
 
@@ -88,13 +89,16 @@ export async function generateConversationTitle(req: AuthenticatedRequest, res: 
       .join('\n')
       .slice(0, 4000); // keep prompt bounded tighter to reduce token usage
 
-    const provider = (req.body?.provider as 'gemini' | 'openrouter' | undefined) || env.AI_PROVIDER;
+    const provider = (req.body?.provider as 'gemini' | 'openrouter' | 'groq' | undefined) || env.AI_PROVIDER;
     let modelId: string;
     let openAIProvider: ReturnType<typeof createOpenAI>;
 
     if (provider === 'openrouter') {
       openAIProvider = createOpenRouterClient();
       modelId = getOpenRouterModelId();
+    } else if (provider === 'groq') {
+      openAIProvider = createGroqClient();
+      modelId = getGroqModelId();
     } else {
       const baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
       modelId = (env as any).GEMINI_MODEL || 'gemini-2.0-flash';
@@ -181,12 +185,15 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
     await MessageModel.create({ conversationId: convId, userId, role: 'user', content: message });
 
     // Select provider (Gemini default) or OpenRouter via OpenAI-compatible SDK
-    const providerName = (bodyProvider as 'gemini' | 'openrouter' | undefined) || env.AI_PROVIDER;
+    const providerName = (bodyProvider as 'gemini' | 'openrouter' | 'groq' | undefined) || env.AI_PROVIDER;
     let modelId: string;
     let openAIProvider: ReturnType<typeof createOpenAI>;
     if (providerName === 'openrouter') {
       openAIProvider = createOpenRouterClient();
       modelId = getOpenRouterModelId();
+    } else if (providerName === 'groq') {
+      openAIProvider = createGroqClient();
+      modelId = getGroqModelId();
     } else {
       const baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
       modelId = (env as any).GEMINI_MODEL || 'gemini-2.0-flash';
@@ -488,3 +495,42 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
 }
 
 
+// GET /api/ai/models/openrouter
+export async function listOpenRouterModels(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const r = await fetch('https://openrouter.ai/api/v1/models', { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error(`OpenRouter models failed: ${r.status}`);
+    const data = await r.json();
+    const list = Array.isArray(data?.data) ? (data.data as any[]) : [];
+    // Heuristics for free models: pricing fields are 0 or missing, or tags include 'free'
+    const free = list.filter((m) => {
+      const pricing = m.pricing || {};
+      const tagFree = Array.isArray(m.tags) && m.tags.includes('free');
+      const zeroish = (v: any) => v === 0 || v === '0' || v === '0.0' || v === undefined || v === null;
+      const promptFree = zeroish(pricing.prompt);
+      const completionFree = zeroish(pricing.completion);
+      return tagFree || (promptFree && completionFree);
+    });
+    const models = free.map((m) => ({ id: String(m.id || ''), name: String(m.name || m.id || '') }));
+    res.json({ models });
+  } catch (err) {
+    next(createError(502, (err as Error).message));
+  }
+}
+
+// GET /api/ai/models/groq
+export async function listGroqModels(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    if (!env.GROQ_API_KEY) throw createError(400, 'GROQ_API_KEY not configured');
+    const r = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { 'Authorization': `Bearer ${env.GROQ_API_KEY}`, 'Accept': 'application/json' },
+    });
+    if (!r.ok) throw new Error(`Groq models failed: ${r.status}`);
+    const data = await r.json();
+    const list = Array.isArray(data?.data) ? (data.data as any[]) : [];
+    const models = list.map((m) => ({ id: String(m.id || ''), name: String(m.name || m.id || '') }));
+    res.json({ models });
+  } catch (err) {
+    next(createError(502, (err as Error).message));
+  }
+}

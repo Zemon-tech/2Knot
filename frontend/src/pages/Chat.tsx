@@ -51,9 +51,10 @@ export default function Chat() {
   const [autoScroll, setAutoScroll] = useState(true);
   const [atBottom, setAtBottom] = useState(true);
   const [atTop, setAtTop] = useState(true);
-  const [provider, setProvider] = useState<'gemini' | 'openrouter'>('gemini');
+  const [provider, setProvider] = useState<'gemini' | 'openrouter' | 'groq'>('gemini');
   const [openModelDialog, setOpenModelDialog] = useState(false);
   const [openRouterModels, setOpenRouterModels] = useState<{ id: string; name?: string }[]>([]);
+  const [groqModels, setGroqModels] = useState<{ id: string; name?: string }[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState<string>('openrouter/auto');
   const [webSearch, setWebSearch] = useState<boolean>(false);
@@ -93,8 +94,8 @@ export default function Chat() {
   // Load saved provider on mount and persist changes
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('aiProvider') as 'gemini' | 'openrouter' | null;
-      if (saved === 'gemini' || saved === 'openrouter') setProvider(saved);
+      const saved = localStorage.getItem('aiProvider') as 'gemini' | 'openrouter' | 'groq' | null;
+      if (saved === 'gemini' || saved === 'openrouter' || saved === 'groq') setProvider(saved);
       const savedModel = localStorage.getItem('openrouterModel');
       if (savedModel) setSelectedOpenRouterModel(savedModel);
       const ws = localStorage.getItem('webSearch');
@@ -123,13 +124,20 @@ export default function Chat() {
       (async () => {
         try {
           setModelsLoading(true);
-          const res = await fetch('https://openrouter.ai/api/v1/models');
-          const data = await res.json();
-          const list = Array.isArray(data?.data) ? data.data as any[] : [];
-          const models = list.map((m) => ({ id: m.id as string, name: (m.name as string) || (m.id as string) }));
-          setOpenRouterModels(models);
-        } catch {
-          setOpenRouterModels([]);
+          // OpenRouter free models via backend proxy
+          try {
+            const { models } = await api.ai.modelsOpenRouter();
+            setOpenRouterModels(models);
+          } catch {
+            setOpenRouterModels([]);
+          }
+          // Groq models via backend proxy
+          try {
+            const { models } = await api.ai.modelsGroq();
+            setGroqModels(models);
+          } catch {
+            setGroqModels([]);
+          }
         } finally {
           setModelsLoading(false);
         }
@@ -276,11 +284,11 @@ export default function Chat() {
   // Chat no longer manages the sidebar list; creation/selection is handled in layout.
 
   function NavHeader() {
-    const { toggleSidebar, state } = useSidebar();
+    const { toggleSidebar, state, isMobile } = useSidebar();
     return (
       <header className="sticky top-0 z-20 h-12 border-b px-4 flex items-center justify-between bg-background">
         <div className="flex items-center gap-2">
-          {state === 'collapsed' && (
+          {(isMobile || state === 'collapsed') && (
             <button
               aria-label="Toggle sidebar"
               className="group inline-flex items-center"
@@ -304,7 +312,7 @@ export default function Chat() {
                 onClick={() => setOpenModelDialog(true)}
               >
                 <span className="truncate">
-                  {provider === 'openrouter' ? selectedOpenRouterModel : 'Gemini'}
+                  {provider === 'openrouter' ? selectedOpenRouterModel : provider === 'groq' ? 'Groq' : 'Gemini'}
                 </span>
                 <span className="ml-2 inline-flex items-center justify-center h-7 w-7">
                   <Settings className="size-4" />
@@ -347,7 +355,7 @@ export default function Chat() {
                     </div>
                   </ModelSelectorItem>
                 </ModelSelectorGroup>
-                <ModelSelectorGroup heading="OpenRouter">
+                <ModelSelectorGroup heading="OpenRouter (Free)">
                   {openRouterModels.map((m) => (
                     <ModelSelectorItem
                       key={m.id}
@@ -363,6 +371,26 @@ export default function Chat() {
                           const provider = (m.id.split('/')[0] || 'openrouter') as any;
                           return <ModelSelectorLogo provider={provider} className="size-4" />;
                         })()}
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-medium truncate">{m.name || m.id}</span>
+                          <span className="text-xs text-muted-foreground truncate">{m.id}</span>
+                        </div>
+                      </div>
+                    </ModelSelectorItem>
+                  ))}
+                </ModelSelectorGroup>
+                <ModelSelectorGroup heading="Groq">
+                  {groqModels.map((m) => (
+                    <ModelSelectorItem
+                      key={m.id}
+                      value={m.id}
+                      onSelect={() => {
+                        setProvider('groq');
+                        setOpenModelDialog(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-3 w-full">
+                        <ModelSelectorLogo provider={"groq" as any} className="size-4" />
                         <div className="flex flex-col min-w-0">
                           <span className="font-medium truncate">{m.name || m.id}</span>
                           <span className="text-xs text-muted-foreground truncate">{m.id}</span>
