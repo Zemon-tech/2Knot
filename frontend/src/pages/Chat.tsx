@@ -224,15 +224,12 @@ export default function Chat() {
 
   useEffect(() => {
     const checkPosition = () => {
-      const isAtBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
       const isAtTop = window.scrollY <= 8;
-      setAtBottom(isAtBottom);
       setAtTop(isAtTop);
-      if (isAtBottom) setAutoScroll(true);
     };
-    const handleWheel = () => {
-      const isAtBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 8;
-      if (!isAtBottom) setAutoScroll(false);
+    const handleWheel = (e: WheelEvent) => {
+      // If the user scrolls upward, disable autoscroll until they click "Get to latest"
+      if (e.deltaY < 0) setAutoScroll(false);
     };
     window.addEventListener('scroll', checkPosition, { passive: true });
     window.addEventListener('wheel', handleWheel, { passive: true });
@@ -248,6 +245,33 @@ export default function Chat() {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, streaming, autoScroll]);
+
+  // Use IntersectionObserver to more reliably detect when we're at the very bottom
+  // of the page (i.e., when the invisible bottomRef is visible). This is more robust
+  // than comparing window scroll coordinates, especially when the prompt input grows
+  // or sticky elements affect layout.
+  useEffect(() => {
+    const target = bottomRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        const atBottomNow = entry.isIntersecting;
+        setAtBottom(atBottomNow);
+        if (atBottomNow) setAutoScroll(true);
+      },
+      {
+        root: null,
+        threshold: 0.99,
+      }
+    );
+
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   // Chat no longer manages the sidebar list; creation/selection is handled in layout.
 
