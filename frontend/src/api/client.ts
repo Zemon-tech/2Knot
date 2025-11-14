@@ -146,7 +146,21 @@ export const api = {
       }
       return res.json() as Promise<{ text: string; images: string[]; conversationId?: string }>;
     },
+    imageList: () => request<{ images: { url: string; mediaType?: string; filename?: string }[] }>(`/ai/image/list`),
+    deleteImage: async (url: string) => {
+      const path = `/ai/image?url=${encodeURIComponent(url)}`;
+      const options: RequestInit = { method: 'DELETE', credentials: 'include' };
+      let res = await fetch(`${API_BASE}${path}`, options);
+      if (res.status === 401) {
+        try { await api.auth.refresh(); } catch { throw new Error('Unauthorized'); }
+        res = await fetch(`${API_BASE}${path}`, options);
+      }
+      if (!res.ok) {
+        let message = 'Request failed';
+        try { const data = await res.json(); message = data.error || message; } catch {}
+        throw new Error(message);
+      }
+      return true as const;
+    },
   },
 };
-
-

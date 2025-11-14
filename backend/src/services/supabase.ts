@@ -13,3 +13,12 @@ export async function uploadImageFromBuffer(path: string, buffer: Buffer, conten
   const { data: pub } = supabase.storage.from(env.SUPABASE_BUCKET).getPublicUrl(path);
   return { path: data.path, publicUrl: pub.publicUrl };
 }
+
+export async function deleteObjectByPublicUrl(publicUrl: string) {
+  const base = `${env.SUPABASE_URL}/storage/v1/object/public/${env.SUPABASE_BUCKET}/`;
+  if (!publicUrl.startsWith(base)) return false;
+  const path = publicUrl.slice(base.length);
+  const { error } = await supabase.storage.from(env.SUPABASE_BUCKET).remove([path]);
+  if (error) throw new Error(`Supabase delete failed: ${error.message}`);
+  return true;
+}

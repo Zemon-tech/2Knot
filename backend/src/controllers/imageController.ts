@@ -4,7 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { ConversationModel } from '../models/Conversation';
 import { MessageModel } from '../models/Message';
 import { env } from '../config/env';
-import { uploadImageFromBuffer } from '../services/supabase';
+import { uploadImageFromBuffer, deleteObjectByPublicUrl } from '../services/supabase';
 
 function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } {
   const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
@@ -13,6 +13,52 @@ function parseDataUrl(dataUrl: string): { mime: string; buffer: Buffer } {
   const base64 = m[2];
   const buffer = Buffer.from(base64, 'base64');
   return { mime, buffer };
+}
+
+// GET /api/ai/image/list
+export async function listUserImages(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.userId;
+    const docs = await MessageModel.find({ userId, 'attachments.0': { $exists: true } }, { attachments: 1, createdAt: 1 })
+      .sort({ createdAt: -1 })
+      .lean();
+    const urls: { url: string; mediaType?: string; filename?: string }[] = [];
+    const seen = new Set<string>();
+    for (const d of docs) {
+      const atts: any[] = Array.isArray((d as any).attachments) ? (d as any).attachments : [];
+      for (const a of atts) {
+        if (a?.url && !seen.has(a.url)) {
+          seen.add(a.url);
+          urls.push({ url: a.url, mediaType: a.mediaType, filename: a.filename });
+        }
+      }
+    }
+    res.json({ images: urls });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// DELETE /api/ai/image?url=...
+export async function deleteUserImage(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.userId;
+    const url = String((req.query.url as string) || '');
+    if (!url) throw createError(400, 'url is required');
+    // Ensure the image belongs to user (exists in any of user's message attachments)
+    const exists = await MessageModel.exists({ userId, 'attachments.url': url });
+    if (!exists) throw createError(404, 'Image not found');
+
+    // Delete from Supabase when possible (ignore if not ours)
+    try { await deleteObjectByPublicUrl(url); } catch {}
+
+    // Remove from messages attachments
+    await MessageModel.updateMany({ userId }, { $pull: { attachments: { url } } });
+
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
 }
 
 // POST /api/ai/image/analyze

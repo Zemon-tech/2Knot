@@ -5,6 +5,7 @@ import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 import { PanelLeftIcon } from "lucide-react"
 import { MoreVertical, Pencil, Trash2 } from "lucide-react"
+import { SettingsDialog } from "../settings/SettingsDialog"
 
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
@@ -760,94 +761,10 @@ function SidebarUserButton({ email, name, avatarUrl, onLogout }: SidebarUserButt
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [personalOpen, setPersonalOpen] = React.useState(false)
   const [helpOpen, setHelpOpen] = React.useState(false)
-
-  // Theme state
-  const [theme, setTheme] = React.useState<'system' | 'light' | 'dark'>(() =>
-    (localStorage.getItem('theme') as 'system' | 'light' | 'dark') || 'system'
-  )
   const [accent, setAccent] = React.useState<string>(() =>
     localStorage.getItem('accent') || '' // empty = neutral, no accent
   )
-  // Content text scale (affects markdown and other content areas using CSS var)
-  const [contentScale, setContentScale] = React.useState<number>(() => {
-    const saved = localStorage.getItem('contentScale')
-    const num = saved ? parseFloat(saved) : 1
-    return Number.isFinite(num) ? Math.min(1.5, Math.max(0.8, num)) : 1
-  })
-  const [contentPreset, setContentPreset] = React.useState<"small" | "normal" | "large" | "xl" | "custom">(() => {
-    const saved = localStorage.getItem('contentPreset') as any
-    return saved || 'normal'
-  })
-
-  // Apply theme
-  const applyTheme = React.useCallback((t: 'system' | 'light' | 'dark') => {
-    const root = document.documentElement
-    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)')
-    const setDark = (on: boolean) => root.classList.toggle('dark', on)
-
-    if (t === 'system') {
-      setDark(systemPrefersDark.matches)
-    } else {
-      setDark(t === 'dark')
-    }
-  }, [])
-
-  // Watch system theme when in system mode
-  React.useEffect(() => {
-    const mql = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = () => {
-      if (theme === 'system') applyTheme('system')
-    }
-    mql.addEventListener('change', handler)
-    return () => mql.removeEventListener('change', handler)
-  }, [theme, applyTheme])
-
-  // Apply current theme/accent on mount and when changed
-  React.useEffect(() => {
-    applyTheme(theme)
-    localStorage.setItem('theme', theme)
-  }, [theme, applyTheme])
-
-  React.useEffect(() => {
-    const root = document.documentElement
-    if (accent && accent.length > 0) {
-      root.setAttribute('data-accent', accent)
-    } else {
-      root.removeAttribute('data-accent')
-    }
-    localStorage.setItem('accent', accent)
-  }, [accent])
-
-  // Apply content scale to :root CSS variable
-  React.useEffect(() => {
-    const root = document.documentElement
-    root.style.setProperty('--content-scale', String(contentScale))
-    localStorage.setItem('contentScale', String(contentScale))
-    localStorage.setItem('contentPreset', contentPreset)
-
-    // Determine weight profile by preset or inferred from scale
-    type Weights = { h1: number; h2: number; h3: number; h4: number; body: number }
-    const presets: Record<string, Weights> = {
-      small: { h1: 600, h2: 500, h3: 500, h4: 500, body: 400 },
-      normal: { h1: 700, h2: 600, h3: 500, h4: 500, body: 400 },
-      large: { h1: 800, h2: 700, h3: 600, h4: 500, body: 500 },
-      xl: { h1: 900, h2: 800, h3: 700, h4: 600, body: 500 },
-    }
-    let key = contentPreset
-    if (key === 'custom') {
-      // Infer from scale when custom
-      if (contentScale < 0.95) key = 'small'
-      else if (contentScale < 1.1) key = 'normal'
-      else if (contentScale < 1.25) key = 'large'
-      else key = 'xl'
-    }
-    const w = presets[key] || presets.normal
-    root.style.setProperty('--fw-h1', String(w.h1))
-    root.style.setProperty('--fw-h2', String(w.h2))
-    root.style.setProperty('--fw-h3', String(w.h3))
-    root.style.setProperty('--fw-h4', String(w.h4))
-    root.style.setProperty('--fw-body', String(w.body))
-  }, [contentScale, contentPreset])
+  // Accent preview dot uses this state; SettingsDialog updates it via setAccent
 
   return (
     <div className="mt-auto p-2">
@@ -897,90 +814,7 @@ function SidebarUserButton({ email, name, avatarUrl, onLogout }: SidebarUserButt
       </DropdownMenu>
 
       {/* Settings Dialog */}
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="sm:max-w-2xl" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Settings</DialogTitle>
-            <DialogDescription>Manage your preferences.</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-1 border-r pr-2 space-y-1">
-              <div className="text-sm font-medium px-2 py-1">General</div>
-              <div className="text-sm font-medium px-2 py-1 opacity-60">Notifications</div>
-              <div className="text-sm font-medium px-2 py-1 opacity-60">Account</div>
-            </div>
-            <div className="sm:col-span-2 space-y-6">
-              <section className="space-y-2">
-                <div className="text-sm font-medium">Theme</div>
-                <div className="text-xs text-muted-foreground">Choose how the interface looks. Uses system preference when set to System.</div>
-                <div className="flex gap-2">
-                  {(['system','light','dark'] as const).map((t) => (
-                    <button
-                      key={t}
-                      aria-pressed={theme===t}
-                      onClick={() => {
-                        setTheme(t)
-                        // When forcing light/dark, use neutral (no accent) by default.
-                        if (t !== 'system') setAccent('')
-                      }}
-                      className={cn(
-                        'px-3 py-1.5 rounded-md border text-sm',
-                        theme===t ? 'bg-muted text-foreground border-input' : ''
-                      )}
-                    >
-                      {t[0].toUpperCase()+t.slice(1)}
-                    </button>
-                  ))}
-                </div>
-              </section>
-              <section className="space-y-2">
-                <div className="text-sm font-medium">Text size</div>
-                <div className="text-xs text-muted-foreground">Adjust content typography scale. Presets or fine-tune.</div>
-                <div className="flex flex-wrap gap-2">
-                  {([
-                    { key: 'small', label: 'Small', value: 0.9 },
-                    { key: 'normal', label: 'Normal', value: 1.0 },
-                    { key: 'large', label: 'Large', value: 1.15 },
-                    { key: 'xl', label: 'XL', value: 1.3 },
-                  ] as const).map(({ key, label, value }) => (
-                    <button
-                      key={key}
-                      aria-pressed={contentPreset===key}
-                      onClick={() => {
-                        setContentPreset(key)
-                        setContentScale(value)
-                      }}
-                      className={cn(
-                        'px-3 py-1.5 rounded-md border text-sm',
-                        contentPreset===key ? 'bg-muted text-foreground border-input' : ''
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-3 pt-1">
-                  <input
-                    type="range"
-                    min={0.8}
-                    max={1.5}
-                    step={0.05}
-                    value={contentScale}
-                    onChange={(e) => {
-                      const v = Number(e.target.value)
-                      setContentScale(v)
-                      setContentPreset('custom')
-                    }}
-                    className="w-full"
-                    aria-label="Text size"
-                  />
-                  <div className="text-xs tabular-nums w-12 text-right">{contentScale.toFixed(2)}x</div>
-                </div>
-              </section>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} accent={accent} setAccent={setAccent} />
 
       {/* Personalization Dialog */}
       <Dialog open={personalOpen} onOpenChange={setPersonalOpen}>
