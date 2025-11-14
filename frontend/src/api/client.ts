@@ -131,6 +131,21 @@ export const api = {
     },
     modelsOpenRouter: () => request<{ models: { id: string; name?: string }[] }>(`/ai/models/openrouter`),
     modelsGroq: () => request<{ models: { id: string; name?: string }[] }>(`/ai/models/groq`),
+    analyzeImage: async (body: { prompt: string; images: { url: string; mediaType?: string; filename?: string }[] }) => {
+      const path = `/ai/image/analyze`;
+      const options: RequestInit = { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) };
+      let res = await fetch(`${API_BASE}${path}`, options);
+      if (res.status === 401) {
+        try { await api.auth.refresh(); } catch { throw new Error('Unauthorized'); }
+        res = await fetch(`${API_BASE}${path}`, options);
+      }
+      if (!res.ok) {
+        let message = 'Request failed';
+        try { const data = await res.json(); message = data.error || message; } catch {}
+        throw new Error(message);
+      }
+      return res.json() as Promise<{ text: string; images: string[] }>;
+    },
   },
 };
 

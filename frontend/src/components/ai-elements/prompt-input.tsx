@@ -795,7 +795,17 @@ export const PromptInput = ({
         onSubmit={handleSubmit}
         {...props}
       >
-        <InputGroup className={cn(groupClassName)}>{children}</InputGroup>
+        <InputGroup className={cn(groupClassName)}>
+          {/* Inline previews of attachments */}
+          <div className="flex flex-wrap gap-1.5 px-1 py-1">
+            <PromptInputAttachments>
+              {(file) => (
+                <PromptInputAttachment key={file.id} data={file} />
+              )}
+            </PromptInputAttachments>
+          </div>
+          {children}
+        </InputGroup>
       </form>
     </>
   );

@@ -151,7 +151,7 @@ export default function Chat() {
     setMessages(messages as any);
   }
 
-  async function onSend(userText: string) {
+  async function onSend(userText: string, images?: { url: string; mediaType?: string; filename?: string }[]) {
     if (!userText.trim() || streaming) return;
     setMessages((m) => [...m, { role: 'user', content: userText }]);
     setStreaming(true);
@@ -160,6 +160,17 @@ export default function Chat() {
     setAutoScroll(true);
     let convId = activeId || undefined;
     try {
+      // If images provided, call image analysis endpoint and bypass chat streaming
+      if (images && images.length > 0) {
+        try {
+          const { text } = await api.ai.analyzeImage({ prompt: userText, images });
+          setMessages((m) => [...m, { role: 'assistant', content: text }]);
+        } finally {
+          setStreaming(false);
+          setTimeout(() => setPhase(null), 500);
+        }
+        return;
+      }
       let finalConvId: string | undefined = convId;
       // Build locale-aware web options
       const lang = (typeof navigator !== 'undefined' ? navigator.language : 'en-US') || 'en-US';
@@ -420,8 +431,10 @@ export default function Chat() {
               <div className="text-3xl sm:text-4xl font-semibold tracking-tight">What's on the agenda today?</div>
               <div className="w-full max-w-4xl">
                 <PromptInput
-                  onSubmit={async ({ text }) => {
-                    if (text) await onSend(text);
+                  onSubmit={async ({ text, files }) => {
+                    if (!text) return;
+                    const images = (files || []).map((f) => ({ url: f.url, mediaType: (f as any).mediaType, filename: (f as any).filename }));
+                    await onSend(text, images.length ? images : undefined);
                   }}
                   groupClassName={`${webSearch ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
                 >
@@ -594,8 +607,10 @@ export default function Chat() {
         <div className="sticky bottom-0 z-20 pointer-events-none">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pointer-events-auto">
               <PromptInput
-                onSubmit={async ({ text }) => {
-                  if (text) await onSend(text);
+                onSubmit={async ({ text, files }) => {
+                  if (!text) return;
+                  const images = (files || []).map((f) => ({ url: f.url, mediaType: (f as any).mediaType, filename: (f as any).filename }));
+                  await onSend(text, images.length ? images : undefined);
                 }}
                 groupClassName={`${webSearch ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
               >

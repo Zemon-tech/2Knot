@@ -30,4 +30,8 @@ export const env = {
   GROQ_MODEL: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
   // SerpAPI configuration (optional; only required if web search is enabled)
   SERPAPI_KEY: process.env.SERPAPI_KEY || '',
+  // Supabase storage configuration
+  SUPABASE_URL: required('SUPABASE_URL'),
+  SUPABASE_SERVICE_ROLE_KEY: required('SUPABASE_SERVICE_ROLE_KEY'),
+  SUPABASE_BUCKET: required('SUPABASE_BUCKET'),
 };
