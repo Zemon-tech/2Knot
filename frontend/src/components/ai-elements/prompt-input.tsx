@@ -499,7 +499,7 @@ export const PromptInput = ({
   className,
   accept = "*/*",
   multiple,
-  globalDrop,
+  globalDrop = true,
   syncHiddenInput,
   maxFiles,
   maxFileSize,
