@@ -293,11 +293,11 @@ export function PromptInputAttachment({
 
   const filename = data.filename || "";
 
-  const mediaType =
-    data.mediaType?.startsWith("image/") && data.url ? "image" : "file";
-  const isImage = mediaType === "image";
+  const isImage = (data.mediaType?.startsWith("image/") ?? false) && !!data.url;
+  const isVideo = (data.mediaType?.startsWith("video/") ?? false) && !!data.url;
 
-  const attachmentLabel = filename || (isImage ? "Image" : "Attachment");
+  const attachmentLabel =
+    filename || (isImage ? "Image" : isVideo ? "Video" : "Attachment");
 
   return (
     <PromptInputHoverCard>
@@ -357,10 +357,19 @@ export function PromptInputAttachment({
               />
             </div>
           )}
+          {!isImage && isVideo && (
+            <div className="flex max-h-96 w-96 items-center justify-center overflow-hidden rounded-md border">
+              <video
+                controls
+                className="max-h-full max-w-full"
+                src={data.url}
+              />
+            </div>
+          )}
           <div className="flex items-center gap-2.5">
             <div className="min-w-0 flex-1 space-y-1 px-0.5">
               <h4 className="truncate font-semibold text-sm leading-none">
-                {filename || (isImage ? "Image" : "Attachment")}
+                {filename || (isImage ? "Image" : isVideo ? "Video" : "Attachment")}
               </h4>
               {data.mediaType && (
                 <p className="truncate font-mono text-muted-foreground text-xs">
@@ -488,7 +497,7 @@ export type PromptInputProps = Omit<
 
 export const PromptInput = ({
   className,
-  accept,
+  accept = "*/*",
   multiple,
   globalDrop,
   syncHiddenInput,
@@ -537,14 +546,30 @@ export const PromptInput = ({
 
   const matchesAccept = useCallback(
     (f: File) => {
-      if (!accept || accept.trim() === "") {
-        return true;
-      }
-      if (accept.includes("image/*")) {
-        return f.type.startsWith("image/");
-      }
-      // NOTE: keep simple; expand as needed
-      return true;
+      const acc = (accept || "").trim();
+      if (!acc) return true;
+      const parts = acc.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean);
+      if (parts.length === 0) return true;
+
+      const fileType = (f.type || "").toLowerCase();
+      const fileName = (f.name || "").toLowerCase();
+      const fileExt = fileName.includes(".") ? `.${fileName.split(".").pop()}` : "";
+
+      // If */* present, allow anything
+      if (parts.includes("*/*")) return true;
+
+      // Match any of the provided patterns
+      return parts.some((p) => {
+        if (p.endsWith("/*")) {
+          const prefix = p.slice(0, -2); // e.g., image, video, audio, application
+          return fileType.startsWith(`${prefix}/`);
+        }
+        if (p.startsWith(".")) {
+          return fileExt === p; // e.g., .pdf, .docx
+        }
+        // Exact mime type like application/pdf
+        return fileType === p;
+      });
     },
     [accept]
   );
@@ -827,10 +852,8 @@ export const PromptInput = ({
     });
   };
 
-  // Determine if there are image previews
-  const hasImagePreviews = files.some(
-    (f) => !!f.url && (f.mediaType?.startsWith("image/") ?? false)
-  );
+  // Determine if there are any attachments to preview
+  const hasAnyPreviews = files.length > 0;
 
   // Render with or without local provider
   const inner = (
@@ -858,16 +881,14 @@ export const PromptInput = ({
         onSubmit={handleSubmit}
         {...props}
       >
-        <InputGroup className={cn(groupClassName, hasImagePreviews && "!rounded-2xl items-start gap-2")}> 
-          {/* Image previews row inside the input boundary */}
-          {hasImagePreviews && (
+        <InputGroup className={cn(groupClassName, hasAnyPreviews && "!rounded-2xl items-start gap-2")}>
+          {/* Attachments preview row inside the input boundary */}
+          {hasAnyPreviews && (
             <div className="basis-full w-full order-first px-1 pt-1">
               <div className="flex flex-wrap gap-1.5">
-                {files.map((file) =>
-                  file.mediaType?.startsWith("image/") && file.url ? (
-                    <PromptInputAttachment key={file.id} data={file} />
-                  ) : null
-                )}
+                {files.map((file) => (
+                  <PromptInputAttachment key={file.id} data={file} />
+                ))}
               </div>
             </div>
           )}
