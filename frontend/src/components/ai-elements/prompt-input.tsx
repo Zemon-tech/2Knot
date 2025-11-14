@@ -156,22 +156,45 @@ export function PromptInputProvider({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openRef = useRef<() => void>(() => {});
 
+  const fileToDataURL = useCallback((file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
   const add = useCallback((files: File[] | FileList) => {
     const incoming = Array.from(files);
     if (incoming.length === 0) return;
 
-    setAttachements((prev) =>
-      prev.concat(
-        incoming.map((file) => ({
+    Promise.all(
+      incoming.map(async (file) => {
+        const isImage = file.type?.startsWith("image/");
+        const url = isImage ? await fileToDataURL(file) : URL.createObjectURL(file);
+        return {
           id: nanoid(),
           type: "file" as const,
-          url: URL.createObjectURL(file),
+          url,
           mediaType: file.type,
           filename: file.name,
-        }))
-      )
-    );
-  }, []);
+        } as const;
+      })
+    ).then((next) => {
+      setAttachements((prev) => {
+        const all = prev.concat(next as any);
+        const seen = new Set<string>();
+        const dedup = all.filter((f) => {
+          const key = `${f.filename ?? ''}|${f.mediaType ?? ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        return dedup;
+      });
+    });
+  }, [fileToDataURL]);
 
   
 
@@ -179,14 +202,14 @@ export function PromptInputProvider({
   const remove = useCallback((id: string) => {
     setAttachements((prev) => {
       const found = prev.find((f) => f.id === id);
-      if (found?.url) URL.revokeObjectURL(found.url);
+      if (found?.url && found.url.startsWith("blob:")) URL.revokeObjectURL(found.url);
       return prev.filter((f) => f.id !== id);
     });
   }, []);
 
   const clear = useCallback(() => {
     setAttachements((prev) => {
-      for (const f of prev) if (f.url) URL.revokeObjectURL(f.url);
+      for (const f of prev) if (f.url && f.url.startsWith("blob:")) URL.revokeObjectURL(f.url);
       return [];
     });
   }, []);
@@ -548,6 +571,36 @@ export const PromptInput = ({
         return;
       }
 
+      const buildItems = (filesToBuild: File[]) =>
+        Promise.all(
+          filesToBuild.map(
+            (file) =>
+              new Promise<FileUIPart & { id: string }>((resolve, reject) => {
+                if (file.type?.startsWith("image/")) {
+                  const reader = new FileReader();
+                  reader.onload = () =>
+                    resolve({
+                      id: nanoid(),
+                      type: "file",
+                      url: reader.result as string,
+                      mediaType: file.type,
+                      filename: file.name,
+                    });
+                  reader.onerror = reject;
+                  reader.readAsDataURL(file);
+                } else {
+                  resolve({
+                    id: nanoid(),
+                    type: "file",
+                    url: URL.createObjectURL(file),
+                    mediaType: file.type,
+                    filename: file.name,
+                  });
+                }
+              })
+          )
+        );
+
       setItems((prev) => {
         const capacity =
           typeof maxFiles === "number"
@@ -561,17 +614,20 @@ export const PromptInput = ({
             message: "Too many files. Some were not added.",
           });
         }
-        const next: (FileUIPart & { id: string })[] = [];
-        for (const file of capped) {
-          next.push({
-            id: nanoid(),
-            type: "file",
-            url: URL.createObjectURL(file),
-            mediaType: file.type,
-            filename: file.name,
+        // Optimistic: we'll append after async conversion completes
+        buildItems(capped).then((next) => {
+          setItems((p) => {
+            const all = p.concat(next);
+            const seen = new Set<string>();
+            return all.filter((f) => {
+              const key = `${f.filename ?? ''}|${f.mediaType ?? ''}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
           });
-        }
-        return prev.concat(next);
+        });
+        return prev;
       });
     },
     [matchesAccept, maxFiles, maxFileSize, onError]
@@ -586,7 +642,7 @@ export const PromptInput = ({
     : (id: string) =>
         setItems((prev) => {
           const found = prev.find((file) => file.id === id);
-          if (found?.url) {
+          if (found?.url && found.url.startsWith("blob:")) {
             URL.revokeObjectURL(found.url);
           }
           return prev.filter((file) => file.id !== id);
@@ -597,7 +653,7 @@ export const PromptInput = ({
     : () =>
         setItems((prev) => {
           for (const file of prev) {
-            if (file.url) {
+            if (file.url && file.url.startsWith("blob:")) {
               URL.revokeObjectURL(file.url);
             }
           }
@@ -630,11 +686,13 @@ export const PromptInput = ({
     const onDragOver = (e: DragEvent) => {
       if (e.dataTransfer?.types?.includes("Files")) {
         e.preventDefault();
+        e.stopPropagation();
       }
     };
     const onDrop = (e: DragEvent) => {
       if (e.dataTransfer?.types?.includes("Files")) {
         e.preventDefault();
+        e.stopPropagation();
       }
       if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
         add(e.dataTransfer.files);
@@ -769,6 +827,11 @@ export const PromptInput = ({
     });
   };
 
+  // Determine if there are image previews
+  const hasImagePreviews = files.some(
+    (f) => !!f.url && (f.mediaType?.startsWith("image/") ?? false)
+  );
+
   // Render with or without local provider
   const inner = (
     <>
@@ -795,15 +858,19 @@ export const PromptInput = ({
         onSubmit={handleSubmit}
         {...props}
       >
-        <InputGroup className={cn(groupClassName)}>
-          {/* Inline previews of attachments */}
-          <div className="flex flex-wrap gap-1.5 px-1 py-1">
-            <PromptInputAttachments>
-              {(file) => (
-                <PromptInputAttachment key={file.id} data={file} />
-              )}
-            </PromptInputAttachments>
-          </div>
+        <InputGroup className={cn(groupClassName, hasImagePreviews && "!rounded-2xl items-start gap-2")}> 
+          {/* Image previews row inside the input boundary */}
+          {hasImagePreviews && (
+            <div className="basis-full w-full order-first px-1 pt-1">
+              <div className="flex flex-wrap gap-1.5">
+                {files.map((file) =>
+                  file.mediaType?.startsWith("image/") && file.url ? (
+                    <PromptInputAttachment key={file.id} data={file} />
+                  ) : null
+                )}
+              </div>
+            </div>
+          )}
           {children}
         </InputGroup>
       </form>
