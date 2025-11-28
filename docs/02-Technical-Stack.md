@@ -57,3 +57,40 @@
   - AI_PROVIDER (gemini|openrouter)
   - OPENROUTER_API_KEY, OPENROUTER_MODEL, OPENROUTER_REFERER, OPENROUTER_TITLE
   - SERPAPI_KEY
+
+## Environment variables (detailed)
+
+| Name | Required | Example | Notes |
+| --- | --- | --- | --- |
+| MONGODB_URI | yes | mongodb+srv://... | Mongo connection string |
+| JWT_ACCESS_SECRET | yes | long-random-string | Signs access tokens |
+| JWT_REFRESH_SECRET | yes | long-random-string | Signs refresh tokens |
+| CLIENT_ORIGIN | yes | http://localhost:5173 | CORS origin for frontend |
+| GEMINI_API_KEY | yes (default provider) | `...` | Required when `AI_PROVIDER=gemini` |
+| AI_PROVIDER | no | gemini | gemini | openrouter | groq |
+| OPENROUTER_API_KEY | when using OpenRouter | `...` | Optional otherwise |
+| OPENROUTER_MODEL | no | openrouter/auto | Preferred model id |
+| OPENROUTER_REFERER | no | https://your.app | For OpenRouter policy |
+| OPENROUTER_TITLE | no | Quild AI | Shown in OpenRouter logs |
+| GROQ_API_KEY | when using Groq | `...` | Optional otherwise |
+| GROQ_MODEL | no | llama-3.3-70b-versatile | Default Groq model |
+| SERPAPI_KEY | when enabling web search | `...` | Optional otherwise |
+| SUPABASE_URL | yes | https://<ref>.supabase.co | Images storage |
+| SUPABASE_SERVICE_ROLE_KEY | yes | `...` | Server-side key |
+| SUPABASE_BUCKET | yes | quild-images | Bucket name |
+
+## Rationale & alternatives
+
+- Express + TypeScript: mature, minimal overhead; alternatives: Fastify, NestJS.
+- MongoDB via Mongoose: schemaless iteration speed; alternatives: Postgres + Prisma.
+- ai + provider SDKs: unified streaming and provider swap; alternatives: direct REST.
+- SerpAPI: simple Google/News results; alternatives: Tavily, Perplexity API, Bing.
+
+## External resources
+
+- Express docs: https://expressjs.com/
+- Mongoose docs: https://mongoosejs.com/
+- ai SDK: https://github.com/vercel/ai
+- OpenRouter: https://openrouter.ai/
+- Groq: https://groq.com/
+- SerpAPI: https://serpapi.com/
