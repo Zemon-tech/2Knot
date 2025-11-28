@@ -4,6 +4,7 @@ const ConversationSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     title: { type: String, required: true },
+    agentId: { type: Schema.Types.ObjectId, ref: 'Agent', required: false },
   },
   { timestamps: true }
 );
@@ -15,5 +16,3 @@ export type ConversationDocument = InferSchemaType<typeof ConversationSchema> & 
 };
 
 export const ConversationModel = mongoose.model('Conversation', ConversationSchema);
-
-

@@ -46,11 +46,25 @@ export const api = {
       body: JSON.stringify({ title }),
     }),
     messages: (id: string, page = 1, pageSize = 50) =>
-      request<{ messages: any[] }>(`/conversations/${id}/messages?page=${page}&pageSize=${pageSize}`),
+      request<{ conversation: any; messages: any[] }>(`/conversations/${id}/messages?page=${page}&pageSize=${pageSize}`),
+  },
+  agents: {
+    list: () => request<{ agents: any[] }>("/agents"),
+    create: (body: { name: string; description?: string; systemPrompt: string }) =>
+      request<{ agent: any }>("/agents", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: { name?: string; description?: string; systemPrompt?: string }) =>
+      request<{ agent: any }>(`/agents/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    remove: (id: string) => request<{ ok: true }>(`/agents/${id}`, { method: "DELETE" }),
   },
   ai: {
     stream: (
-      body: { conversationId?: string; message: string; attachments?: { url: string; mediaType?: string; filename?: string }[]; provider?: 'gemini' | 'openrouter' | 'groq'; webSearch?: boolean; web?: { gl?: string; hl?: string; location?: string; num?: number; maxSources?: number } },
+      body: { conversationId?: string; message: string; attachments?: { url: string; mediaType?: string; filename?: string }[]; provider?: 'gemini' | 'openrouter' | 'groq'; webSearch?: boolean; web?: { gl?: string; hl?: string; location?: string; num?: number; maxSources?: number }; agentId?: string },
       handlers: {
         onDelta: (text: string) => void;
         onDone?: (data: { conversationId?: string }) => void;

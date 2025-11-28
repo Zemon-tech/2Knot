@@ -5,6 +5,7 @@ import createError from 'http-errors';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { ConversationModel } from '../models/Conversation';
 import { MessageModel } from '../models/Message';
+import { AgentModel } from '../models/Agent';
 import { env } from '../config/env';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenRouterClient, getOpenRouterModelId } from '../ai/openrouterProvider';
@@ -160,11 +161,11 @@ Return only the title.`;
 }
 
 // POST /api/ai/stream
-// body: { conversationId?: string, message: string }
+// body: { conversationId?: string, message: string, agentId?: string }
 export async function streamAIResponse(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const userId = req.user!.userId;
-    const { conversationId, message, webSearch, provider: bodyProvider, web, attachments } = req.body as {
+    const { conversationId, message, webSearch, provider: bodyProvider, web, attachments, agentId } = req.body as {
       conversationId?: string;
       message: string;
       webSearch?: boolean;
@@ -175,13 +176,25 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
     if (!message) throw createError(400, 'Message is required');
 
     let convId = conversationId;
+    let effectiveAgentId: string | undefined = agentId;
     if (convId) {
-      const conv = await ConversationModel.findOne({ _id: convId, userId }).lean();
+      const conv = await ConversationModel.findOne({ _id: convId, userId });
       if (!conv) throw createError(404, 'Conversation not found');
+      // If an explicit agentId is provided and differs, update the conversation
+      if (agentId && (!conv.agentId || conv.agentId.toString() !== agentId)) {
+        conv.agentId = agentId as any;
+        await conv.save();
+      }
+      effectiveAgentId = (conv.agentId as any)?.toString() || agentId;
     } else {
       const title = message.length > 60 ? message.slice(0, 60) + '…' : message;
-      const conv = await ConversationModel.create({ userId, title: title || 'New Chat' });
+      const conv = await ConversationModel.create({
+        userId,
+        title: title || 'New Chat',
+        agentId: agentId || undefined,
+      });
       convId = conv._id.toString();
+      effectiveAgentId = (conv.agentId as any)?.toString() || agentId;
     }
 
     // Save user message (with optional attachments)
@@ -399,6 +412,19 @@ export async function streamAIResponse(req: AuthenticatedRequest, res: Response,
 
       // Assemble model call with optional research brief as a system preface
       const systemParts = [SYSTEM_PROMPT];
+
+      // If an agent is active, append its persona instructions
+      if (effectiveAgentId) {
+        try {
+          const agent = await AgentModel.findOne({ _id: effectiveAgentId, userId }).lean();
+          if (agent?.systemPrompt) {
+            systemParts.push('\n\n### Active Agent Persona\n');
+            systemParts.push(agent.systemPrompt);
+          }
+        } catch {
+          // Ignore agent lookup failures and fall back to base system prompt only
+        }
+      }
       // Inject dynamic current time/date and locale context for better temporal awareness
       const tzOffsetMin = -new Date().getTimezoneOffset();
       const sign = tzOffsetMin >= 0 ? '+' : '-';

@@ -18,7 +18,7 @@ export async function getConversationMessages(req: AuthenticatedRequest, res: Re
       .skip((p - 1) * ps)
       .limit(ps)
       .lean();
-    res.json({ messages });
+    res.json({ conversation: conv, messages });
   } catch (err) {
     next(err);
   }

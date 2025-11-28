@@ -922,6 +922,11 @@ export type PromptInputTextareaProps = ComponentProps<
   suggestions?: string[];
   suggestionInterval?: number;
   forceMultilineLayout?: boolean;
+  /**
+   * Optional callback fired when the current word at the caret starts with `@`.
+   * Receives the mention query (text after `@`) or null when no mention is active.
+   */
+  onMentionQueryChange?: (query: string | null) => void;
 };
 
 export const PromptInputTextarea = ({
@@ -931,6 +936,7 @@ export const PromptInputTextarea = ({
   suggestions = [],
   suggestionInterval = 3000,
   forceMultilineLayout,
+  onMentionQueryChange,
   ...props
 }: PromptInputTextareaProps) => {
   const controller = useOptionalPromptInputController();
@@ -970,6 +976,28 @@ export const PromptInputTextarea = ({
     setIsMultiline(nextH > baseH + 1);
   }, []);
 
+  const updateMentionFromValue = useCallback(
+    (value: string) => {
+      if (!onMentionQueryChange) return;
+      const el = taRef.current;
+      const pos = el?.selectionStart ?? value.length;
+      const uptoCaret = value.slice(0, pos);
+      const lastBreak = Math.max(
+        uptoCaret.lastIndexOf(" "),
+        uptoCaret.lastIndexOf("\n"),
+        uptoCaret.lastIndexOf("\t")
+      );
+      const token = uptoCaret.slice(lastBreak + 1);
+      if (token.startsWith("@")) {
+        const q = token.slice(1);
+        onMentionQueryChange(q);
+      } else {
+        onMentionQueryChange(null);
+      }
+    },
+    [onMentionQueryChange]
+  );
+
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
     if (e.key === "Enter") {
       if (isComposing || e.nativeEvent.isComposing) {
@@ -993,6 +1021,10 @@ export const PromptInputTextarea = ({
       if (lastAttachment) {
         attachments.remove(lastAttachment.id);
       }
+    }
+
+    if (e.key === "Escape" && onMentionQueryChange) {
+      onMentionQueryChange(null);
     }
   };
 
@@ -1070,15 +1102,19 @@ export const PromptInputTextarea = ({
     ? {
         value: controller.textInput.value,
         onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
-          controller.textInput.setInput(e.currentTarget.value);
+          const next = e.currentTarget.value;
+          controller.textInput.setInput(next);
           onChange?.(e);
+          updateMentionFromValue(next);
           // After value change, re-measure
           queueMicrotask(autosize);
         },
       }
     : {
         onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
+          const next = e.currentTarget.value;
           onChange?.(e);
+          updateMentionFromValue(next);
           queueMicrotask(autosize);
         },
       };

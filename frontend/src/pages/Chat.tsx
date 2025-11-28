@@ -16,6 +16,12 @@ import {
   PromptInputActionAddAttachments,
   PromptInputActionToggleWebSearch,
   PromptInputActiveModeWebsearch,
+  PromptInputCommand,
+  PromptInputCommandList,
+  PromptInputCommandGroup,
+  PromptInputCommandItem,
+  PromptInputCommandEmpty,
+  PromptInputCommandSeparator,
 } from '@/components/ai-elements/prompt-input';
 import { useAuth } from '../context/AuthContext';
 import { PlusIcon, CopyIcon, PanelLeftIcon, MoreVertical, Settings, PaperclipIcon } from 'lucide-react';
@@ -35,6 +41,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Actions, Action } from '@/components/ai-elements/actions';
 import { Task, TaskContent, TaskItem, TaskTrigger } from '@/components/ai-elements/task';
 import { useSidebar } from '@/components/ui/sidebar';
+import CreateAgentDialog from '@/components/agents/CreateAgentDialog';
 
 // Remove model-internal tool code blocks like ```tool_code ... ``` while preserving normal code
 function sanitizeAssistantText(input: string): string {
@@ -47,6 +54,7 @@ function sanitizeAssistantText(input: string): string {
 type WebSource = { id: number; title: string; link: string; source?: string; favicon?: string; date?: string; snippet?: string };
 type Attachment = { url: string; mediaType?: string; filename?: string };
 type Message = { _id?: string; role: 'user' | 'assistant'; content: string; attachments?: Attachment[]; sources?: WebSource[]; webSummary?: string };
+type Agent = { _id: string; name: string; slug: string; description?: string; systemPrompt: string };
 
 export default function Chat() {
   const { user } = useAuth();
@@ -70,6 +78,10 @@ export default function Chat() {
   const [webSearch, setWebSearch] = useState<boolean>(false);
   const [openSources, setOpenSources] = useState(false);
   const [selectedSources, setSelectedSources] = useState<WebSource[] | null>(null);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [openCreateAgent, setOpenCreateAgent] = useState(false);
 
   const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
   const salutation = (() => {
@@ -115,6 +127,18 @@ export default function Chat() {
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load user agents on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { agents } = await api.agents.list();
+        setAgents(agents as Agent[]);
+      } catch {
+        setAgents([]);
+      }
+    })();
+  }, []);
   useEffect(() => {
     try {
       localStorage.setItem('aiProvider', provider);
@@ -159,8 +183,15 @@ export default function Chat() {
 
   async function selectConversation(id: string) {
     setActiveId(id);
-    const { messages } = await api.conversations.messages(id, 1, 200);
+    const { conversation, messages } = await api.conversations.messages(id, 1, 200);
     setMessages(messages as any);
+    const convAgentId = (conversation as any)?.agentId as string | undefined;
+    if (convAgentId) {
+      const found = agents.find((a) => a._id === convAgentId);
+      setActiveAgent(found || null);
+    } else {
+      setActiveAgent(null);
+    }
   }
 
   async function onSend(userText: string, files?: Attachment[]) {
@@ -202,7 +233,7 @@ export default function Chat() {
       const hl = (hlPart || 'en').toLowerCase();
       const gl = (glPart || 'US').toLowerCase();
       await api.ai.stream(
-        { conversationId: convId, message: userText, attachments: files, provider, webSearch, web: webSearch ? { hl, gl } : undefined },
+        { conversationId: convId, message: userText, attachments: files, provider, webSearch, web: webSearch ? { hl, gl } : undefined, agentId: activeAgent?._id },
         {
           onDelta: (delta: string) => {
             assistantBuffer.current += delta;
@@ -372,6 +403,15 @@ export default function Chat() {
 
   return (
     <>
+      <CreateAgentDialog
+        open={openCreateAgent}
+        onOpenChange={setOpenCreateAgent}
+        onCreated={(agent) => {
+          setAgents((prev) => [...prev, agent as Agent]);
+          setActiveAgent(agent as Agent);
+        }}
+        createAgent={api.agents.create}
+      />
       <ModelSelector open={openModelDialog} onOpenChange={setOpenModelDialog}>
         <ModelSelectorContent title="Select Model" className="sm:max-w-xl">
           <ModelSelectorInput placeholder="Search models…" />
@@ -486,6 +526,14 @@ export default function Chat() {
                         onClick={() => setWebSearch(false)}
                       />
                     )}
+                    {activeAgent && (
+                      <PromptInputActiveModeWebsearch
+                        active={true}
+                        label={`Agent: ${activeAgent.name}`}
+                        onClick={() => setActiveAgent(null)}
+                        className="mt-1"
+                      />
+                    )}
                   </PromptInputLeftAddon>
                   <PromptInputTextarea
                     placeholder=""
@@ -498,6 +546,7 @@ export default function Chat() {
                     suggestionInterval={3000}
                     className="py-2"
                     forceMultilineLayout={webSearch}
+                    onMentionQueryChange={setMentionQuery}
                   />
                   <PromptInputFooter>
                     <div />
@@ -685,7 +734,8 @@ export default function Chat() {
       )}
       {messages.length > 0 && (
         <div className="sticky bottom-0 z-20 pointer-events-none">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pointer-events-auto">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pointer-events-auto relative">
+              {null}
               <PromptInput
                 onSubmit={async ({ text, files }) => {
                   if (!text) return;
@@ -713,18 +763,71 @@ export default function Chat() {
                       onClick={() => setWebSearch(false)}
                     />
                   )}
+                  {activeAgent && (
+                    <PromptInputActiveModeWebsearch
+                      active={true}
+                      label={`Agent: ${activeAgent.name}`}
+                      onClick={() => setActiveAgent(null)}
+                      className="mt-1"
+                    />
+                  )}
                 </PromptInputLeftAddon>
                 <PromptInputTextarea
                   placeholder="Send a message"
                   suggestions={[]}
                   className="py-2"
                   forceMultilineLayout={webSearch}
+                  onMentionQueryChange={setMentionQuery}
                 />
                 <PromptInputFooter>
                   <div />
                   <PromptInputSubmit status={streaming ? 'streaming' : undefined} />
                 </PromptInputFooter>
               </PromptInput>
+              {mentionQuery !== null && (
+                <div className="absolute bottom-16 left-0 right-0 max-w-xs">
+                  <PromptInputCommand className="border bg-popover text-popover-foreground rounded-lg shadow-md">
+                    <PromptInputCommandList>
+                      <PromptInputCommandEmpty>No agents found.</PromptInputCommandEmpty>
+                      <PromptInputCommandGroup heading="Agents">
+                        {agents
+                          .filter((a) => {
+                            const q = mentionQuery.toLowerCase();
+                            return (
+                              a.name.toLowerCase().includes(q) ||
+                              a.slug.toLowerCase().includes(q)
+                            );
+                          })
+                          .map((agent) => (
+                            <PromptInputCommandItem
+                              key={agent._id}
+                              onSelect={() => {
+                                setActiveAgent(agent);
+                                setMentionQuery(null);
+                              }}
+                            >
+                              <span className="font-medium">{agent.name}</span>
+                              {agent.description && (
+                                <span className="ml-2 text-xs text-muted-foreground truncate">
+                                  {agent.description}
+                                </span>
+                              )}
+                            </PromptInputCommandItem>
+                          ))}
+                      </PromptInputCommandGroup>
+                      <PromptInputCommandSeparator />
+                      <PromptInputCommandItem
+                        onSelect={() => {
+                          setOpenCreateAgent(true);
+                          setMentionQuery(null);
+                        }}
+                      >
+                        Create new agent…
+                      </PromptInputCommandItem>
+                    </PromptInputCommandList>
+                  </PromptInputCommand>
+                </div>
+              )}
             </div>
           </div>
         )}
