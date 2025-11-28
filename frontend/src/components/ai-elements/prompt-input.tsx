@@ -927,6 +927,11 @@ export type PromptInputTextareaProps = ComponentProps<
    * Receives the mention query (text after `@`) or null when no mention is active.
    */
   onMentionQueryChange?: (query: string | null) => void;
+  /**
+   * Optional callback fired when Backspace deletes a full @mention token.
+   * Provides the removed mention slug (without the leading @).
+   */
+  onMentionRemoved?: (slug: string) => void;
 };
 
 export const PromptInputTextarea = ({
@@ -937,6 +942,7 @@ export const PromptInputTextarea = ({
   suggestionInterval = 3000,
   forceMultilineLayout,
   onMentionQueryChange,
+  onMentionRemoved,
   ...props
 }: PromptInputTextareaProps) => {
   const controller = useOptionalPromptInputController();
@@ -1020,6 +1026,58 @@ export const PromptInputTextarea = ({
       const lastAttachment = attachments.files.at(-1);
       if (lastAttachment) {
         attachments.remove(lastAttachment.id);
+      }
+    }
+
+    // Backspace: remove entire @mention token (e.g., "@slug") regardless of caret position within the token.
+    // Also handle the case where caret is immediately after the token's trailing space ("@slug| ").
+    if (e.key === "Backspace") {
+      const el = e.currentTarget;
+      const pos = el.selectionStart ?? 0;
+      const val = el.value;
+      if (pos > 0 && val.length > 0) {
+        // 1) If caret is after a space, check for a mention token immediately to the left of that space
+        if (val[pos - 1] === ' ') {
+          let leftIdx = pos - 2; // start left of the space
+          while (leftIdx >= 0 && !/\s/.test(val[leftIdx])) leftIdx--;
+          const tokenStart = leftIdx + 1;
+          const tokenEnd = pos - 1; // exclude the space
+          const token = val.slice(tokenStart, tokenEnd);
+          if (/^@[\w-]+$/.test(token)) {
+            e.preventDefault();
+            const nextVal = val.slice(0, tokenStart) + val.slice(pos); // drop token + trailing space
+            el.value = nextVal;
+            if (controller) controller.textInput.setInput(nextVal);
+            onMentionQueryChange?.(null);
+            const slug = token.slice(1);
+            onMentionRemoved?.(slug);
+            try { el.setSelectionRange(tokenStart, tokenStart); } catch {}
+            queueMicrotask(autosize);
+            return;
+          }
+        }
+
+        // 2) General case: caret inside token
+        let left = pos - 1;
+        while (left >= 0 && !/\s/.test(val[left])) left--;
+        const tokenStart = left + 1;
+        let right = pos;
+        while (right < val.length && !/\s/.test(val[right])) right++;
+        const token = val.slice(tokenStart, right);
+        if (/^@[\w-]+$/.test(token)) {
+          e.preventDefault();
+          // Also remove a single trailing space if present to keep typing natural.
+          const removeUntil = right < val.length && val[right] === ' ' ? right + 1 : right;
+          const nextVal = val.slice(0, tokenStart) + val.slice(removeUntil);
+          el.value = nextVal;
+          if (controller) controller.textInput.setInput(nextVal);
+          onMentionQueryChange?.(null);
+          const slug = token.slice(1);
+          onMentionRemoved?.(slug);
+          try { el.setSelectionRange(tokenStart, tokenStart); } catch {}
+          queueMicrotask(autosize);
+          return;
+        }
       }
     }
 

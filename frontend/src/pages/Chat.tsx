@@ -84,6 +84,9 @@ export default function Chat() {
   const [openCreateAgent, setOpenCreateAgent] = useState(false);
   const composerContainerRef = useRef<HTMLDivElement | null>(null);
   const [composerHeight, setComposerHeight] = useState<number>(0);
+  const topTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const bottomTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [focusedComposer, setFocusedComposer] = useState<'top' | 'bottom' | null>(null);
 
   const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
   const salutation = (() => {
@@ -427,6 +430,32 @@ export default function Chat() {
         onCreated={(agent) => {
           setAgents((prev) => [...prev, agent as Agent]);
           setActiveAgent(agent as Agent);
+          // Also insert @agent.slug at caret where @ was typed most recently
+          try {
+            const ta = (focusedComposer === 'bottom'
+              ? (document.querySelector('textarea[data-composer="bottom"]') as HTMLTextAreaElement | null)
+              : (document.querySelector('textarea[data-composer="top"]') as HTMLTextAreaElement | null))
+              || (document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null);
+            if (ta) {
+              const pos = ta.selectionStart ?? ta.value.length;
+              const uptoCaret = ta.value.slice(0, pos);
+              const lastBreak = Math.max(uptoCaret.lastIndexOf(' '), uptoCaret.lastIndexOf('\n'), uptoCaret.lastIndexOf('\t'));
+              const startIdx = lastBreak + 1;
+              const token = uptoCaret.slice(startIdx);
+              const before = ta.value.slice(0, startIdx);
+              const after = ta.value.slice(pos);
+              const insert = `@${(agent as Agent).slug} `;
+              if (token.startsWith('@')) {
+                ta.value = before + insert + after;
+              } else {
+                ta.value = ta.value.slice(0, pos) + insert + after;
+              }
+              const newCaret = (before + insert).length;
+              ta.setSelectionRange(newCaret, newCaret);
+              const evt = new Event('input', { bubbles: true });
+              ta.dispatchEvent(evt);
+            }
+          } catch {}
         }}
         createAgent={api.agents.create}
       />
@@ -564,7 +593,13 @@ export default function Chat() {
                     suggestionInterval={3000}
                     className="py-2"
                     forceMultilineLayout={webSearch || !!activeAgent}
-                    onMentionQueryChange={setMentionQuery}
+                    onMentionQueryChange={(q) => setMentionQuery(q)}
+                    data-composer="top"
+                    ref={topTextareaRef as any}
+                    onFocus={() => setFocusedComposer('top')}
+                    onMentionRemoved={(slug) => {
+                      if (activeAgent?.slug === slug) setActiveAgent(null);
+                    }}
                   />
                   <PromptInputFooter>
                     <div />
@@ -795,7 +830,13 @@ export default function Chat() {
                   suggestions={[]}
                   className="py-2"
                   forceMultilineLayout={webSearch || !!activeAgent}
-                  onMentionQueryChange={setMentionQuery}
+                  onMentionQueryChange={(q) => setMentionQuery(q)}
+                  data-composer="bottom"
+                  ref={bottomTextareaRef as any}
+                  onFocus={() => setFocusedComposer('bottom')}
+                  onMentionRemoved={(slug) => {
+                    if (activeAgent?.slug === slug) setActiveAgent(null);
+                  }}
                 />
                 <PromptInputFooter>
                   <div />
@@ -821,6 +862,37 @@ export default function Chat() {
                               key={agent._id}
                               onSelect={() => {
                                 setActiveAgent(agent);
+                                // Insert @agent.slug at caret in the focused textarea, replacing the current @token
+                                let ta = (focusedComposer === 'bottom' ? bottomTextareaRef.current : topTextareaRef.current);
+                                if (!ta) {
+                                  ta = (focusedComposer === 'bottom'
+                                    ? (document.querySelector('textarea[data-composer="bottom"]') as HTMLTextAreaElement | null)
+                                    : (document.querySelector('textarea[data-composer="top"]') as HTMLTextAreaElement | null))
+                                    || (document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null);
+                                }
+                                try {
+                                  if (ta) {
+                                    const pos = ta.selectionStart ?? ta.value.length;
+                                    const uptoCaret = ta.value.slice(0, pos);
+                                    const lastBreak = Math.max(uptoCaret.lastIndexOf(' '), uptoCaret.lastIndexOf('\n'), uptoCaret.lastIndexOf('\t'));
+                                    const startIdx = lastBreak + 1;
+                                    const token = uptoCaret.slice(startIdx);
+                                    let before = ta.value.slice(0, startIdx);
+                                    const after = ta.value.slice(pos);
+                                    const insert = `@${agent.slug} `;
+                                    if (token.startsWith('@')) {
+                                      // replace token from startIdx..pos
+                                      ta.value = before + insert + after;
+                                    } else {
+                                      ta.value = ta.value.slice(0, pos) + insert + after;
+                                    }
+                                    const newCaret = (before + insert).length;
+                                    ta.setSelectionRange(newCaret, newCaret);
+                                    // dispatch input event so autosize/onMention update
+                                    const evt = new Event('input', { bubbles: true });
+                                    ta.dispatchEvent(evt);
+                                  }
+                                } catch {}
                                 setMentionQuery(null);
                               }}
                             >
