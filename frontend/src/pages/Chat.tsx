@@ -82,6 +82,8 @@ export default function Chat() {
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [openCreateAgent, setOpenCreateAgent] = useState(false);
+  const composerContainerRef = useRef<HTMLDivElement | null>(null);
+  const [composerHeight, setComposerHeight] = useState<number>(0);
 
   const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
   const salutation = (() => {
@@ -320,6 +322,22 @@ export default function Chat() {
     };
   }, []);
 
+  // Track bottom composer height so we can offset the "Get to latest" pill above it
+  useEffect(() => {
+    const el = composerContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = Math.ceil(entry.contentRect.height);
+        setComposerHeight(h);
+      }
+    });
+    ro.observe(el);
+    // Initialize immediately
+    setComposerHeight(el.getBoundingClientRect().height);
+    return () => ro.disconnect();
+  }, [composerContainerRef.current]);
+
   useEffect(() => {
     if (autoScroll && bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -501,7 +519,7 @@ export default function Chat() {
                     const atts = (files || []).map((f) => ({ url: f.url, mediaType: (f as any).mediaType, filename: (f as any).filename }));
                     await onSend(text, atts.length ? atts : undefined);
                   }}
-                  groupClassName={`${webSearch ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
+                  groupClassName={`${(webSearch || !!activeAgent) ? '!rounded-md has-[>textarea[data-multiline=true]]:!rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
                 >
                   <PromptInputLeftAddon>
                     <PromptInputActionMenu>
@@ -545,7 +563,7 @@ export default function Chat() {
                     ]}
                     suggestionInterval={3000}
                     className="py-2"
-                    forceMultilineLayout={webSearch}
+                    forceMultilineLayout={webSearch || !!activeAgent}
                     onMentionQueryChange={setMentionQuery}
                   />
                   <PromptInputFooter>
@@ -717,7 +735,7 @@ export default function Chat() {
           )}
       </div>
       {((!streaming && !atBottom) || (streaming && atTop)) && (
-        <div className="sticky bottom-24 z-30">
+        <div className="sticky z-30" style={{ bottom: Math.max(24, composerHeight + 32) }}>
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-center">
             <button
               aria-label="Get to latest"
@@ -734,7 +752,7 @@ export default function Chat() {
       )}
       {messages.length > 0 && (
         <div className="sticky bottom-0 z-20 pointer-events-none">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pointer-events-auto relative">
+          <div ref={composerContainerRef} className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pointer-events-auto relative">
               {null}
               <PromptInput
                 onSubmit={async ({ text, files }) => {
@@ -742,7 +760,7 @@ export default function Chat() {
                   const atts = (files || []).map((f) => ({ url: f.url, mediaType: (f as any).mediaType, filename: (f as any).filename }));
                   await onSend(text, atts.length ? atts : undefined);
                 }}
-                groupClassName={`${webSearch ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
+                groupClassName={`${(webSearch || !!activeAgent) ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
               >
                 <PromptInputLeftAddon>
                   <PromptInputActionMenu>
@@ -776,7 +794,7 @@ export default function Chat() {
                   placeholder="Send a message"
                   suggestions={[]}
                   className="py-2"
-                  forceMultilineLayout={webSearch}
+                  forceMultilineLayout={webSearch || !!activeAgent}
                   onMentionQueryChange={setMentionQuery}
                 />
                 <PromptInputFooter>

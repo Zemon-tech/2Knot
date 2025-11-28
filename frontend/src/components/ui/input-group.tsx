@@ -17,6 +17,8 @@ function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
         "group/input-group border-input bg-card dark:bg-card relative flex w-full items-center !rounded-full border shadow-xs transition-[color,box-shadow] outline-none overflow-hidden",
         // When textarea grows to multiline, use a slightly more rounded rectangle (override external rounding)
         "has-[>textarea[data-multiline=true]]:!rounded-2xl",
+        // Allow callers to force rectangular styling via data-rect
+        "data-[rect=true]:!rounded-md data-[rect=true]:has-[>textarea[data-multiline=true]]:!rounded-md",
         // Allow inline controls and wrapping when needed
         "flex-wrap",
         // Height rules
