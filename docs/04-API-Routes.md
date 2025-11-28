@@ -1,6 +1,88 @@
 # API Routes
 
-Base URL prefix: `/api`
+Base URL: `http://localhost:4000/api`
+
+Auth is required for all routes below unless noted.
+
+## Auth
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| POST | /auth/register | `{ email, password, name? }` | Creates a new user |
+| POST | /auth/login | `{ email, password }` | Issues cookies (access/refresh) |
+| POST | /auth/logout | — | Clears cookies |
+| POST | /auth/refresh | — | Refreshes access token |
+| GET | /auth/me | — | Returns current user |
+
+Example:
+```bash
+curl -X POST http://localhost:4000/api/auth/login \
+ -H 'Content-Type: application/json' \
+ -c cookies.txt -b cookies.txt \
+ -d '{"email":"dev@example.com","password":"secret"}'
+```
+
+## Conversations
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| GET | /conversations | — | List conversations |
+| POST | /conversations | `{ title? }` | Create conversation |
+| DELETE | /conversations/:id | — | Delete |
+| PATCH | /conversations/:id/title | `{ title }` | Rename |
+| GET | /conversations/:id/messages | query: `page,pageSize` | List messages |
+
+## Agents
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| GET | /agents | — | List agents |
+| POST | /agents | `{ name, description?, systemPrompt }` | Create agent |
+| PATCH | /agents/:id | `{ name?, description?, systemPrompt? }` | Update |
+| DELETE | /agents/:id | — | Delete |
+
+## AI
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| POST | /ai/stream | `{ conversationId?, message, attachments?, provider?, webSearch?, web?, agentId? }` | SSE stream |
+| POST | /ai/title | `{ conversationId, provider? }` | Generate title |
+| GET | /ai/models/openrouter | — | OpenRouter models via backend |
+| GET | /ai/models/groq | — | Groq models via backend |
+
+SSE example:
+```bash
+curl -N -X POST http://localhost:4000/api/ai/stream \
+ -H 'Content-Type: application/json' \
+ -c cookies.txt -b cookies.txt \
+ -d '{"message":"Explain RAG","provider":"gemini","webSearch":false}'
+```
+
+Events include:
+- `{"type":"delta","delta":"..."}`
+- `{"type":"status","phase":"planning|searching|fetching|summarizing|answering|complete"}`
+- `{"type":"sources","sources":[...]}`
+- `{"type":"webSummary","summary":"..."}`
+- `{"type":"done","conversationId":"..."}`
+
+## Image
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| POST | /ai/image/analyze | `{ prompt, images:[{url, mediaType?, filename?}], conversationId? }` | Analyze images |
+| GET | /ai/image/list | — | List user images |
+| DELETE | /ai/image?url=... | — | Delete by URL |
+
+## Errors
+
+- Non-2xx returns `{ error: string }`.
+- 401 Unauthorized triggers client refresh flow; see `frontend/src/api/client.ts`.
+
+## Security
+
+- Rate limiting enabled globally (120 req/min). See `src/server.ts`.
+- CORS restricted via `CLIENT_ORIGIN` env.
+- Cookies used for auth; secure flags recommended in production behind HTTPS.
 
 - **Health**
   | Method | Path | Purpose | Auth |
