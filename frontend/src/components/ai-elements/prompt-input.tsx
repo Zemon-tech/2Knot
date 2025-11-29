@@ -1228,7 +1228,7 @@ export const PromptInputMicButton = ({
     size={size}
     variant={variant}
     className={cn(
-      "transition-colors",
+      "transition-colors text-muted-foreground hover:text-foreground",
       recording && "bg-red-600 text-white hover:bg-red-600/90",
       className
     )}

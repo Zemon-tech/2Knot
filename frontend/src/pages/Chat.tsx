@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
+import { AIVoiceInput } from '@/components/ui/ai-voice-input';
 import { api } from '../api/client';
 import { Message, MessageContent } from '@/components/ai-elements/message';
 import { Response as AIResponse } from '@/components/ai-elements/response';
@@ -89,8 +92,15 @@ export default function Chat() {
   const bottomTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [focusedComposer, setFocusedComposer] = useState<'top' | 'bottom' | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  const [openVoice, setOpenVoice] = useState(false);
+  const rtcRef = useRef<RTCPeerConnection | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const [partialTranscript, setPartialTranscript] = useState<string>('');
+  const rtcDataRef = useRef<RTCDataChannel | null>(null);
 
   const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
   const salutation = (() => {
@@ -118,6 +128,85 @@ export default function Chat() {
             setActiveId(null);
             setMessages([]);
           }
+
+  async function startVoiceSession() {
+    try {
+      const { token } = await api.ai.voiceWebRTCToken({});
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      rtcRef.current = pc;
+      // Outgoing data channel for commands (e.g., sending assistant text for TTS)
+      const dc = pc.createDataChannel('client');
+      dc.onopen = () => { rtcDataRef.current = dc; };
+      dc.onclose = () => { if (rtcDataRef.current === dc) rtcDataRef.current = null; };
+      pc.ontrack = (e) => {
+        const [stream] = e.streams;
+        const el = remoteAudioRef.current || document.createElement('audio');
+        el.autoplay = true;
+        el.srcObject = stream;
+        el.onplay = () => setIsSpeaking(true);
+        el.onended = () => setIsSpeaking(false);
+        if (!remoteAudioRef.current) {
+          remoteAudioRef.current = el as HTMLAudioElement;
+        }
+      };
+      pc.ondatachannel = (ev) => {
+        const ch = ev.channel;
+        ch.onmessage = (m) => {
+          try {
+            const data = JSON.parse(m.data);
+            const t = data?.transcript || data?.text || '';
+            if (typeof t === 'string') setPartialTranscript(t);
+          } catch {}
+        };
+      };
+      const userMedia = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = userMedia;
+      for (const track of userMedia.getAudioTracks()) pc.addTrack(track, userMedia);
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
+      await pc.setLocalDescription(offer);
+      const res = await fetch('https://api.elevenlabs.io/v1/convai/conversation/join', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/sdp',
+          'Accept': 'application/sdp',
+        },
+        body: offer.sdp || ''
+      });
+      const answerSdp = await res.text();
+      const answer = { type: 'answer', sdp: answerSdp } as RTCSessionDescriptionInit;
+      await pc.setRemoteDescription(answer);
+    } catch {
+      stopVoiceSession();
+    }
+  }
+
+  function stopVoiceSession() {
+    try {
+      const pc = rtcRef.current;
+      rtcRef.current = null;
+      pc?.getSenders().forEach((s) => s.track && s.track.stop());
+      pc?.getReceivers().forEach((r) => r.track && r.track.stop());
+      pc?.close();
+    } catch {}
+    try {
+      const ls = localStreamRef.current;
+      localStreamRef.current = null;
+      ls?.getTracks().forEach((t) => t.stop());
+    } catch {}
+    setIsSpeaking(false);
+    setPartialTranscript('');
+    rtcDataRef.current = null;
+  }
+
+  useEffect(() => {
+    if (openVoice) {
+      startVoiceSession();
+    } else {
+      stopVoiceSession();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openVoice]);
         } catch {}
       })();
     }
@@ -177,8 +266,24 @@ export default function Chat() {
     try {
       const { audioBase64 } = await api.ai.voiceTTS({ text });
       const audio = new Audio(audioBase64);
+      setIsSpeaking(true);
       await audio.play();
+      audio.onended = () => setIsSpeaking(false);
     } catch {}
+    finally {
+      // In case onended didn't fire (errors), ensure we reset
+      setTimeout(() => setIsSpeaking(false), 100);
+    }
+  }
+
+  function sendVoiceText(text: string) {
+    const payload = JSON.stringify({ text });
+    const ch = rtcDataRef.current;
+    if (openVoice && ch && ch.readyState === 'open') {
+      try { ch.send(payload); return; } catch {}
+    }
+    // fallback to non-realtime TTS
+    void speakText(text);
   }
 
   // Load user agents on mount
@@ -323,6 +428,8 @@ export default function Chat() {
           onDone: ({ conversationId }) => {
             if (conversationId) finalConvId = conversationId;
             setPhase('complete');
+            const final = sanitizeAssistantText(assistantBuffer.current || '').trim();
+            if (final) sendVoiceText(final);
           },
         }
       );
@@ -444,6 +551,14 @@ export default function Chat() {
           )}
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-8 px-3"
+            onClick={() => setOpenVoice(true)}
+          >
+            Voice
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button aria-label="Menu" className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent">
@@ -615,10 +730,6 @@ export default function Chat() {
                         <PromptInputActionMenuItem>Study and learn</PromptInputActionMenuItem>
                       </PromptInputActionMenuContent>
                     </PromptInputActionMenu>
-                    <PromptInputMicButton
-                      recording={isRecording}
-                      onClick={() => (isRecording ? stopRecording() : startRecording())}
-                    />
                     {webSearch && (
                       <PromptInputActiveModeWebsearch
                         active={webSearch}
@@ -655,7 +766,13 @@ export default function Chat() {
                   />
                   <PromptInputFooter>
                     <div />
-                    <PromptInputSubmit status={streaming ? 'streaming' : undefined} />
+                    <div className="flex items-center gap-1.5">
+                      <PromptInputMicButton
+                        recording={isRecording}
+                        onClick={() => (isRecording ? stopRecording() : startRecording())}
+                      />
+                      <PromptInputSubmit status={streaming ? 'streaming' : undefined} />
+                    </div>
                   </PromptInputFooter>
                 </PromptInput>
               </div>
@@ -901,7 +1018,13 @@ export default function Chat() {
                 />
                 <PromptInputFooter>
                   <div />
-                  <PromptInputSubmit status={streaming ? 'streaming' : undefined} />
+                  <div className="flex items-center gap-1.5">
+                    <PromptInputMicButton
+                      recording={isRecording}
+                      onClick={() => (isRecording ? stopRecording() : startRecording())}
+                    />
+                    <PromptInputSubmit status={streaming ? 'streaming' : undefined} />
+                  </div>
                 </PromptInputFooter>
               </PromptInput>
               {mentionQuery !== null && (
@@ -982,6 +1105,54 @@ export default function Chat() {
             </div>
           </div>
         )}
+      {/* Voice Fullscreen Dialog */}
+      <Dialog open={openVoice} onOpenChange={setOpenVoice}>
+        <DialogContent
+          showCloseButton={false}
+          className="fixed inset-0 top-0 left-0 h-screen w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0 p-0 sm:max-w-none"
+        >
+          <div className="absolute inset-0 bg-background flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <DialogHeader className="p-0">
+                <DialogTitle>Voice Assistant</DialogTitle>
+              </DialogHeader>
+              <DialogClose asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center h-8 px-3 rounded-md border hover:bg-accent"
+                  onClick={() => setOpenVoice(false)}
+                >
+                  Close
+                </button>
+              </DialogClose>
+            </div>
+            <div className="flex-1 overflow-auto flex items-center justify-center">
+              <AIVoiceInput
+                className="py-10"
+                active={isRecording || isSpeaking}
+                mode={isSpeaking ? 'speaking' : (isRecording ? 'listening' : undefined) as any}
+              />
+            </div>
+            {partialTranscript && (
+              <div className="px-4 pb-2 text-center text-sm text-muted-foreground">
+                {partialTranscript}
+              </div>
+            )}
+            <div className="p-4 border-t flex items-center justify-center gap-3">
+              {!isRecording ? (
+                <Button type="button" onClick={() => startRecording()}>
+                  Start Listening
+                </Button>
+              ) : (
+                <Button type="button" variant="destructive" onClick={() => stopRecording()}>
+                  Stop
+                </Button>
+              )}
+            </div>
+            <audio ref={remoteAudioRef as any} className="hidden" />
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Sources Sheet */}
       <Sheet open={openSources} onOpenChange={setOpenSources}>
         <SheetContent side="right" className="sm:max-w-lg">

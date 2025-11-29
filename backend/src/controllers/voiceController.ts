@@ -8,6 +8,40 @@ function b64ToBuffer(b64: string): Buffer {
   return Buffer.from(data, 'base64');
 }
 
+export async function elevenlabsWebRTCToken(req: Request, res: Response, next: NextFunction) {
+  try {
+    const xiKey = env.ELEVEN_API_KEY;
+    if (!xiKey) throw createError(500, 'ELEVEN_API_KEY not configured');
+
+    const { agentId, voiceId } = (req.body || {}) as { agentId?: string; voiceId?: string };
+    const useAgent = agentId || env.ELEVEN_AGENT_ID || '';
+    const useVoice = voiceId || env.ELEVEN_VOICE_ID || '';
+
+    const query: string[] = [];
+    if (useAgent) query.push(`agent_id=${encodeURIComponent(useAgent)}`);
+    if (useVoice) query.push(`voice_id=${encodeURIComponent(useVoice)}`);
+    const qs = query.length ? `?${query.join('&')}` : '';
+
+    const url = `https://api.elevenlabs.io/v1/convai/conversation/get-webrtc-token${qs}`;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': xiKey,
+        'Accept': 'application/json',
+      },
+    });
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      throw createError(r.status, `ElevenLabs token failed: ${errText || r.statusText}`);
+    }
+    const data = await r.json();
+    // Expected: { token: string, expires_at?: string }
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function tts(req: Request, res: Response, next: NextFunction) {
   try {
     const { text, voiceId, modelId, outputFormat } = (req.body || {}) as {

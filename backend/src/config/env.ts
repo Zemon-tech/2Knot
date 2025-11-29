@@ -39,4 +39,5 @@ export const env = {
   ELEVEN_TTS_MODEL: process.env.ELEVEN_TTS_MODEL || 'eleven_turbo_v2_5',
   ELEVEN_STT_MODEL: process.env.ELEVEN_STT_MODEL || 'scribe_v1',
   ELEVEN_VOICE_ID: process.env.ELEVEN_VOICE_ID || '21m00Tcm4TlvDq8ikWAM',
+  ELEVEN_AGENT_ID: process.env.ELEVEN_AGENT_ID || '',
 };
