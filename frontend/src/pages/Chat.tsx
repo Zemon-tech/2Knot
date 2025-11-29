@@ -22,6 +22,7 @@ import {
   PromptInputCommandItem,
   PromptInputCommandEmpty,
   PromptInputCommandSeparator,
+  PromptInputMicButton,
 } from '@/components/ai-elements/prompt-input';
 import { useAuth } from '../context/AuthContext';
 import { PlusIcon, CopyIcon, PanelLeftIcon, MoreVertical, Settings, PaperclipIcon } from 'lucide-react';
@@ -87,6 +88,9 @@ export default function Chat() {
   const topTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [focusedComposer, setFocusedComposer] = useState<'top' | 'bottom' | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
 
   const displayName = (user?.name || user?.email || 'there').split(' ')[0].split('@')[0];
   const salutation = (() => {
@@ -132,6 +136,50 @@ export default function Chat() {
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function startRecording() {
+    if (isRecording) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm' : 'audio/mp4';
+    const mr = new MediaRecorder(stream, { mimeType: mime });
+    chunksRef.current = [];
+    mr.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+    };
+    mr.onstop = async () => {
+      try {
+        const blob = new Blob(chunksRef.current, { type: mime });
+        const b64 = await new Promise<string>((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onloadend = () => resolve(String(fr.result));
+          fr.onerror = reject;
+          fr.readAsDataURL(blob);
+        });
+        const { text } = await api.ai.voiceSTT({ audioBase64: b64, mimeType: mime });
+        if (text && text.trim()) await onSend(text.trim());
+      } catch {}
+    };
+    mr.start(200);
+    mediaRecorderRef.current = mr;
+    setIsRecording(true);
+  }
+
+  async function stopRecording() {
+    if (!isRecording) return;
+    const mr = mediaRecorderRef.current;
+    setIsRecording(false);
+    try { mr?.stop(); } catch {}
+    try { mr?.stream.getTracks().forEach((t) => t.stop()); } catch {}
+  }
+
+  async function speakText(text: string) {
+    if (!text) return;
+    try {
+      const { audioBase64 } = await api.ai.voiceTTS({ text });
+      const audio = new Audio(audioBase64);
+      await audio.play();
+    } catch {}
+  }
 
   // Load user agents on mount
   useEffect(() => {
@@ -567,6 +615,10 @@ export default function Chat() {
                         <PromptInputActionMenuItem>Study and learn</PromptInputActionMenuItem>
                       </PromptInputActionMenuContent>
                     </PromptInputActionMenu>
+                    <PromptInputMicButton
+                      recording={isRecording}
+                      onClick={() => (isRecording ? stopRecording() : startRecording())}
+                    />
                     {webSearch && (
                       <PromptInputActiveModeWebsearch
                         active={webSearch}
@@ -708,6 +760,15 @@ export default function Chat() {
                           onClick={() => navigator.clipboard?.writeText(m.content)}
                         >
                           <CopyIcon className="size-4" />
+                        </Action>
+                        <Action
+                          tooltip="Speak"
+                          label="Speak"
+                          onClick={() => speakText(m.content)}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="size-4">
+                            <path d="M3 10v4a1 1 0 0 0 1 1h3l4 3V6l-4 3H4a1 1 0 0 0-1 1zm13.54-3.46a1 1 0 1 0-1.41 1.41A5 5 0 0 1 17 12a5 5 0 0 1-1.87 3.85 1 1 0 1 0 1.33 1.49A7 7 0 0 0 19 12a7 7 0 0 0-2.46-5.46z" />
+                          </svg>
                         </Action>
                       </Actions>
                     </div>

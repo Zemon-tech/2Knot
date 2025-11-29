@@ -34,4 +34,9 @@ export const env = {
   SUPABASE_URL: required('SUPABASE_URL'),
   SUPABASE_SERVICE_ROLE_KEY: required('SUPABASE_SERVICE_ROLE_KEY'),
   SUPABASE_BUCKET: required('SUPABASE_BUCKET'),
+  // ElevenLabs configuration (optional; required only for voice features)
+  ELEVEN_API_KEY: process.env.ELEVEN_API_KEY || '',
+  ELEVEN_TTS_MODEL: process.env.ELEVEN_TTS_MODEL || 'eleven_turbo_v2_5',
+  ELEVEN_STT_MODEL: process.env.ELEVEN_STT_MODEL || 'scribe_v1',
+  ELEVEN_VOICE_ID: process.env.ELEVEN_VOICE_ID || '21m00Tcm4TlvDq8ikWAM',
 };

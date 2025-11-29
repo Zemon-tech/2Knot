@@ -176,5 +176,35 @@ export const api = {
       }
       return true as const;
     },
+    voiceTTS: async (body: { text: string; voiceId?: string; modelId?: string; outputFormat?: string }) => {
+      const path = `/ai/voice/tts`;
+      const options: RequestInit = { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) };
+      let res = await fetch(`${API_BASE}${path}`, options);
+      if (res.status === 401) {
+        try { await api.auth.refresh(); } catch { throw new Error('Unauthorized'); }
+        res = await fetch(`${API_BASE}${path}`, options);
+      }
+      if (!res.ok) {
+        let message = 'Request failed';
+        try { const data = await res.json(); message = data.error || message; } catch {}
+        throw new Error(message);
+      }
+      return res.json() as Promise<{ audioBase64: string }>;
+    },
+    voiceSTT: async (body: { audioBase64: string; mimeType?: string; language_code?: string }) => {
+      const path = `/ai/voice/stt`;
+      const options: RequestInit = { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) };
+      let res = await fetch(`${API_BASE}${path}`, options);
+      if (res.status === 401) {
+        try { await api.auth.refresh(); } catch { throw new Error('Unauthorized'); }
+        res = await fetch(`${API_BASE}${path}`, options);
+      }
+      if (!res.ok) {
+        let message = 'Request failed';
+        try { const data = await res.json(); message = data.error || message; } catch {}
+        throw new Error(message);
+      }
+      return res.json() as Promise<{ text: string }>;
+    },
   },
 };

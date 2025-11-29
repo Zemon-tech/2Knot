@@ -1211,6 +1211,35 @@ export const PromptInputHeader = ({
   />
 );
 
+export type PromptInputMicButtonProps = ComponentProps<typeof InputGroupButton> & {
+  recording?: boolean;
+};
+
+export const PromptInputMicButton = ({
+  className,
+  size = "icon-sm",
+  variant = "ghost",
+  recording,
+  children,
+  ...props
+}: PromptInputMicButtonProps) => (
+  <InputGroupButton
+    type="button"
+    size={size}
+    variant={variant}
+    className={cn(
+      "transition-colors",
+      recording && "bg-red-600 text-white hover:bg-red-600/90",
+      className
+    )}
+    aria-label={recording ? "Stop recording" : "Start recording"}
+    title={recording ? "Stop recording" : "Start recording"}
+    {...props}
+  >
+    {children ?? (recording ? <SquareIcon className="size-4" /> : <MicIcon className="size-4" />)}
+  </InputGroupButton>
+);
+
 export type PromptInputLeftAddonProps = Omit<
   ComponentProps<typeof InputGroupAddon>,
   "align"
