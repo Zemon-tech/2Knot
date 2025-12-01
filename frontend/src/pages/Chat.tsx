@@ -318,7 +318,8 @@ export default function Chat() {
   };
 
   useEffect(() => {
-    if (mentionQuery && adkAgents.length === 0 && !adkAgentsLoading) {
+    // When the mention menu opens (mentionQuery !== null), ensure ADK agents are loaded.
+    if (mentionQuery !== null && adkAgents.length === 0 && !adkAgentsLoading) {
       fetchADKAgents();
     }
   }, [mentionQuery, adkAgents.length, adkAgentsLoading]);
