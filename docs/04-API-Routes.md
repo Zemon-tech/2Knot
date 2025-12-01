@@ -127,3 +127,51 @@ Events include:
 - **Auth mechanism**
   - Access token: Bearer token or `access_token` cookie; validated by middleware `requireAuth`.
   - Refresh token: `refresh_token` httpOnly cookie; rotated/validated in refresh/logout flows.
+
+## ADK (Google Agent Developer Kit)
+
+All ADK routes require auth and proxy to your running ADK service (default: `http://localhost:8000`).
+
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| GET | /adk/health | — | Check if ADK service is reachable |
+| GET | /adk/agents | `?refresh=true?` | List available ADK agents from `/list-apps` |
+| POST | /adk/message | `{ agentName, message, conversationId? }` | Send message to a specific ADK agent |
+
+### Send ADK message
+
+Request:
+```json
+{
+  "agentName": "my_agent",
+  "message": "Hello from Quild AI",
+  "conversationId": "optional-conversation-id"
+}
+```
+
+Behavior:
+- Backend generates a `sessionId` (UUID) per message, creates the session, then POSTs to ADK `/run` with body:
+```json
+{
+  "app_name": "my_agent",
+  "user_id": "<current-user-id>",
+  "session_id": "<uuid>",
+  "new_message": { "parts": [{ "text": "Hello from Quild AI" }], "role": "user" },
+  "state_delta": {}
+}
+```
+
+Response:
+```json
+{
+  "response": "<agent text>",
+  "agentName": "my_agent",
+  "sessionId": "<uuid>",
+  "timestamp": "2025-12-01T11:20:00.000Z",
+  "conversationId": "<id>"
+}
+```
+
+Errors:
+- 404 if agent or endpoint not found.
+- 422 for FastAPI validation errors (details included when available).

@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { env } from '../config/env';
 import { ADKMessageRequest, ADKMessageResponse, ADKRunRequest } from '../types/adk.types';
 import createError from 'http-errors';
@@ -120,7 +120,7 @@ class ADKService {
     const { agentName, message, userId } = request;
 
     // Generate a new session ID for this message (per-message session)
-    const sessionId = uuidv4();
+    const sessionId = randomUUID();
 
     try {
       // Step 1: Create session first (required before sending messages)
@@ -386,22 +386,24 @@ class ADKService {
           // FastAPI validation errors are usually in detail array
           let errorMessage = 'Invalid request format. Please check the agent configuration.';
           if (responseData && typeof responseData === 'object') {
-            if (responseData.detail) {
+            const dataObj = responseData as Record<string, unknown>;
+            if ('detail' in dataObj) {
+              const detail = (dataObj as { detail?: unknown }).detail;
               // FastAPI validation errors are usually in detail array
-              if (Array.isArray(responseData.detail)) {
-                const errors = responseData.detail.map((d: any) => {
-                  const field = Array.isArray(d.loc) ? d.loc.slice(1).join('.') : 'unknown';
-                  return `${field}: ${d.msg || d.type || 'validation failed'}`;
+              if (Array.isArray(detail)) {
+                const errors = detail.map((d: any) => {
+                  const field = Array.isArray(d?.loc) ? d.loc.slice(1).join('.') : 'unknown';
+                  return `${field}: ${d?.msg || d?.type || 'validation failed'}`;
                 }).join('; ');
                 errorMessage = `Validation error: ${errors}`;
-                this.log('FastAPI validation details', responseData.detail);
+                this.log('FastAPI validation details', detail);
               } else {
-                errorMessage = `Validation error: ${JSON.stringify(responseData.detail)}`;
+                errorMessage = `Validation error: ${JSON.stringify(detail)}`;
               }
-            } else if (responseData.message) {
-              errorMessage = responseData.message;
-            } else if (responseData.error) {
-              errorMessage = responseData.error;
+            } else if ('message' in dataObj && typeof dataObj.message === 'string') {
+              errorMessage = dataObj.message;
+            } else if ('error' in dataObj && typeof dataObj.error === 'string') {
+              errorMessage = dataObj.error;
             }
           }
           throw createError(422, errorMessage);

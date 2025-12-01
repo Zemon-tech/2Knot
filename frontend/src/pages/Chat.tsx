@@ -29,6 +29,7 @@ import {
 } from '@/components/ai-elements/prompt-input';
 import { useAuth } from '../context/AuthContext';
 import { PlusIcon, CopyIcon, PanelLeftIcon, MoreVertical, Settings, PaperclipIcon } from 'lucide-react';
+import { RefreshCcw } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
@@ -86,11 +87,11 @@ export default function Chat() {
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [openCreateAgent, setOpenCreateAgent] = useState(false);
+  const autoSpeak = false;
   // ADK Agent state
   const [adkAgents, setAdkAgents] = useState<string[]>([]);
   const [adkAgentsLoading, setAdkAgentsLoading] = useState(false);
   const [selectedAdkAgent, setSelectedAdkAgent] = useState<string | null>(null);
-  const [adkAgentError, setAdkAgentError] = useState<string | null>(null);
   const composerContainerRef = useRef<HTMLDivElement | null>(null);
   const [composerHeight, setComposerHeight] = useState<number>(0);
   const topTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -307,11 +308,9 @@ export default function Chat() {
   const fetchADKAgents = async (forceRefresh = false) => {
     try {
       setAdkAgentsLoading(true);
-      setAdkAgentError(null);
       const { agents } = await api.adk.listAgents(forceRefresh);
       setAdkAgents(agents);
     } catch (error) {
-      setAdkAgentError('Failed to load ADK agents. Please try again.');
       setAdkAgents([]);
     } finally {
       setAdkAgentsLoading(false);
@@ -319,9 +318,7 @@ export default function Chat() {
   };
 
   useEffect(() => {
-    const query = mentionQuery?.toLowerCase();
-    // Support both @agent and @agents for ADK agents
-    if (mentionQuery && (query === 'agents' || query === 'agent') && adkAgents.length === 0 && !adkAgentsLoading) {
+    if (mentionQuery && adkAgents.length === 0 && !adkAgentsLoading) {
       fetchADKAgents();
     }
   }, [mentionQuery, adkAgents.length, adkAgentsLoading]);
@@ -409,7 +406,6 @@ export default function Chat() {
 
       while (retryCount < maxRetries) {
         try {
-          setAdkAgentError(null);
           // Validate agent name
           if (!selectedAdkAgent || selectedAdkAgent.trim().length === 0) {
             throw new Error('Invalid agent selected');
@@ -464,7 +460,6 @@ export default function Chat() {
               content: `${errorMessage}\n\nYou can try again or select a different agent.`,
               adkAgentName: selectedAdkAgent 
             }]);
-            setAdkAgentError('Model unavailable, please try again');
             setSelectedAdkAgent(null); // Clear selection on final failure
             setStreaming(false);
             setTimeout(() => setPhase(null), 500);
@@ -548,7 +543,7 @@ export default function Chat() {
             if (conversationId) finalConvId = conversationId;
             setPhase('complete');
             const final = sanitizeAssistantText(assistantBuffer.current || '').trim();
-            if (final) sendVoiceText(final);
+            if (final && autoSpeak) sendVoiceText(final);
           },
         }
       );
@@ -1163,158 +1158,166 @@ export default function Chat() {
                 </PromptInputFooter>
               </PromptInput>
               {mentionQuery !== null && (
-                <div className="absolute bottom-16 left-0 right-0 max-w-xs">
+                <div className="absolute bottom-16 left-0 right-0 max-w-[14rem]">
                   <PromptInputCommand className="border bg-popover text-popover-foreground rounded-lg shadow-md">
                     <PromptInputCommandList>
-                      {/* Show ADK agents when @agent or @agents is typed */}
-                      {mentionQuery.toLowerCase() === 'agents' || mentionQuery.toLowerCase() === 'agent' ? (
-                        <>
-                          {adkAgentsLoading ? (
-                            <PromptInputCommandEmpty>Loading ADK agents…</PromptInputCommandEmpty>
-                          ) : adkAgents.length > 0 ? (
-                            <>
-                              <PromptInputCommandGroup heading="ADK Agents">
-                                {adkAgents
-                                  .filter((agentName) => agentName && agentName.trim().length > 0 && agentName.length <= 200) // Filter out invalid agent names
-                                  .slice(0, 50) // Limit to 50 agents for performance
-                                  .map((agentName) => (
-                                  <PromptInputCommandItem
-                                    key={agentName}
-                                    onSelect={() => {
-                                      // Validate agent name before setting
-                                      const trimmed = agentName.trim();
-                                      if (trimmed.length > 0 && trimmed.length <= 200) {
-                                        setSelectedAdkAgent(trimmed);
-                                      }
-                                      // Remove @agents from textarea
-                                      let ta = (focusedComposer === 'bottom' ? bottomTextareaRef.current : topTextareaRef.current);
-                                      if (!ta) {
-                                        ta = (focusedComposer === 'bottom'
-                                          ? (document.querySelector('textarea[data-composer="bottom"]') as HTMLTextAreaElement | null)
-                                          : (document.querySelector('textarea[data-composer="top"]') as HTMLTextAreaElement | null))
-                                          || (document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null);
-                                      }
-                                      try {
-                                        if (ta) {
-                                          const pos = ta.selectionStart ?? ta.value.length;
-                                          const uptoCaret = ta.value.slice(0, pos);
-                                          const lastBreak = Math.max(uptoCaret.lastIndexOf(' '), uptoCaret.lastIndexOf('\n'), uptoCaret.lastIndexOf('\t'));
-                                          const startIdx = lastBreak + 1;
-                                          const token = uptoCaret.slice(startIdx);
-                                          let before = ta.value.slice(0, startIdx);
-                                          const after = ta.value.slice(pos);
-                                          // Remove @agent or @agents token
-                                          const tokenLower = token.toLowerCase();
-                                          if (tokenLower === '@agents' || tokenLower === '@agent' || tokenLower.startsWith('@agents') || tokenLower.startsWith('@agent')) {
-                                            ta.value = before + after;
-                                            const newCaret = before.length;
+                      {(() => {
+                        const q = mentionQuery.toLowerCase();
+                        const adkFiltered = adkAgents
+                          .filter((name) => name && name.trim().length > 0 && name.length <= 200)
+                          .filter((name) => !q || name.toLowerCase().includes(q))
+                          .slice(0, 50);
+                        const userFiltered = agents.filter((a) => a.name.toLowerCase().includes(q) || a.slug.toLowerCase().includes(q));
+
+                        const hasAny = (adkFiltered.length + userFiltered.length) > 0;
+
+                        return (
+                          <>
+                            {!hasAny && <PromptInputCommandEmpty>No agents found.</PromptInputCommandEmpty>}
+
+                            {/* ADK agents section */}
+                            {adkAgentsLoading ? (
+                              <PromptInputCommandEmpty>Loading ADK agents…</PromptInputCommandEmpty>
+                            ) : adkFiltered.length > 0 ? (
+                              <>
+                                <PromptInputCommandGroup heading="ADK Agents">
+                                  {adkFiltered.map((agentName) => (
+                                    <PromptInputCommandItem
+                                      key={agentName}
+                                      onSelect={() => {
+                                        const trimmed = agentName.trim();
+                                        if (trimmed.length > 0 && trimmed.length <= 200) {
+                                          setSelectedAdkAgent(trimmed);
+                                        }
+                                        setMentionQuery(null);
+                                      }}
+                                    >
+                                      <span className="font-medium">{agentName}</span>
+                                    </PromptInputCommandItem>
+                                  ))}
+                                </PromptInputCommandGroup>
+                                <PromptInputCommandSeparator />
+                                <PromptInputCommandItem
+                                  onSelect={() => {
+                                    setOpenCreateAgent(true);
+                                    setMentionQuery(null);
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between gap-2 w-full">
+                                    <span>Create new agent…</span>
+                                    <button
+                                      type="button"
+                                      aria-label="Refresh agents"
+                                      className="inline-flex items-center justify-center h-6 w-6 rounded border hover:bg-accent"
+                                      onClick={async (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        try {
+                                          await fetchADKAgents(true);
+                                          const { agents: fresh } = await api.agents.list();
+                                          setAgents(fresh as any);
+                                        } catch {}
+                                      }}
+                                    >
+                                      <RefreshCcw className="size-4" />
+                                    </button>
+                                  </div>
+                                </PromptInputCommandItem>
+                              </>
+                            ) : null}
+
+                            {/* User agents section */}
+                            {userFiltered.length > 0 && (
+                              <>
+                                <PromptInputCommandGroup heading="Agents">
+                                  {userFiltered.map((agent) => (
+                                    <PromptInputCommandItem
+                                      key={agent._id}
+                                      onSelect={() => {
+                                        setActiveAgent(agent);
+                                        let ta = (focusedComposer === 'bottom' ? bottomTextareaRef.current : topTextareaRef.current);
+                                        if (!ta) {
+                                          ta = (focusedComposer === 'bottom'
+                                            ? (document.querySelector('textarea[data-composer="bottom"]') as HTMLTextAreaElement | null)
+                                            : (document.querySelector('textarea[data-composer="top"]') as HTMLTextAreaElement | null))
+                                            || (document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null);
+                                        }
+                                        try {
+                                          if (ta) {
+                                            const pos = ta.selectionStart ?? ta.value.length;
+                                            const uptoCaret = ta.value.slice(0, pos);
+                                            const lastBreak = Math.max(uptoCaret.lastIndexOf(' '), uptoCaret.lastIndexOf('\n'), uptoCaret.lastIndexOf('\t'));
+                                            const startIdx = lastBreak + 1;
+                                            const token = uptoCaret.slice(startIdx);
+                                            let before = ta.value.slice(0, startIdx);
+                                            const after = ta.value.slice(pos);
+                                            const insert = `@${agent.slug} `;
+                                            if (token.startsWith('@')) {
+                                              ta.value = before + insert + after;
+                                            } else {
+                                              ta.value = ta.value.slice(0, pos) + insert + after;
+                                            }
+                                            const newCaret = (before + insert).length;
                                             ta.setSelectionRange(newCaret, newCaret);
                                             const evt = new Event('input', { bubbles: true });
                                             ta.dispatchEvent(evt);
                                           }
-                                        }
-                                      } catch {}
-                                      setMentionQuery(null);
-                                    }}
-                                  >
-                                    <span className="font-medium">{agentName}</span>
-                                  </PromptInputCommandItem>
-                                ))}
-                              </PromptInputCommandGroup>
-                              <PromptInputCommandSeparator />
-                              <PromptInputCommandItem
-                                onSelect={() => {
-                                  fetchADKAgents(true); // Force refresh
-                                }}
-                              >
-                                Refresh ADK agents
-                              </PromptInputCommandItem>
-                            </>
-                          ) : (
-                            <>
-                              <PromptInputCommandEmpty>No ADK agents available.</PromptInputCommandEmpty>
-                              <PromptInputCommandSeparator />
-                              <PromptInputCommandItem
-                                onSelect={() => {
-                                  fetchADKAgents(true); // Force refresh
-                                }}
-                              >
-                                Refresh ADK agents
-                              </PromptInputCommandItem>
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <PromptInputCommandEmpty>No agents found.</PromptInputCommandEmpty>
-                          <PromptInputCommandGroup heading="Agents">
-                            {agents
-                              .filter((a) => {
-                                const q = mentionQuery.toLowerCase();
-                                return (
-                                  a.name.toLowerCase().includes(q) ||
-                                  a.slug.toLowerCase().includes(q)
-                                );
-                              })
-                              .map((agent) => (
-                                <PromptInputCommandItem
-                                  key={agent._id}
-                                  onSelect={() => {
-                                    setActiveAgent(agent);
-                                    // Insert @agent.slug at caret in the focused textarea, replacing the current @token
-                                    let ta = (focusedComposer === 'bottom' ? bottomTextareaRef.current : topTextareaRef.current);
-                                    if (!ta) {
-                                      ta = (focusedComposer === 'bottom'
-                                        ? (document.querySelector('textarea[data-composer="bottom"]') as HTMLTextAreaElement | null)
-                                        : (document.querySelector('textarea[data-composer="top"]') as HTMLTextAreaElement | null))
-                                        || (document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null);
-                                    }
-                                    try {
-                                      if (ta) {
-                                        const pos = ta.selectionStart ?? ta.value.length;
-                                        const uptoCaret = ta.value.slice(0, pos);
-                                        const lastBreak = Math.max(uptoCaret.lastIndexOf(' '), uptoCaret.lastIndexOf('\n'), uptoCaret.lastIndexOf('\t'));
-                                        const startIdx = lastBreak + 1;
-                                        const token = uptoCaret.slice(startIdx);
-                                        let before = ta.value.slice(0, startIdx);
-                                        const after = ta.value.slice(pos);
-                                        const insert = `@${agent.slug} `;
-                                        if (token.startsWith('@')) {
-                                          // replace token from startIdx..pos
-                                          ta.value = before + insert + after;
-                                        } else {
-                                          ta.value = ta.value.slice(0, pos) + insert + after;
-                                        }
-                                        const newCaret = (before + insert).length;
-                                        ta.setSelectionRange(newCaret, newCaret);
-                                        // dispatch input event so autosize/onMention update
-                                        const evt = new Event('input', { bubbles: true });
-                                        ta.dispatchEvent(evt);
-                                      }
-                                    } catch {}
-                                    setMentionQuery(null);
-                                  }}
-                                >
-                                  <span className="font-medium">{agent.name}</span>
-                                  {agent.description && (
-                                    <span className="ml-2 text-xs text-muted-foreground truncate">
-                                      {agent.description}
-                                    </span>
-                                  )}
-                                </PromptInputCommandItem>
-                              ))}
-                          </PromptInputCommandGroup>
-                          <PromptInputCommandSeparator />
-                          <PromptInputCommandItem
-                            onSelect={() => {
-                              setOpenCreateAgent(true);
-                              setMentionQuery(null);
-                            }}
-                          >
-                            Create new agent…
-                          </PromptInputCommandItem>
-                        </>
-                      )}
+                                        } catch {}
+                                        setMentionQuery(null);
+                                      }}
+                                    >
+                                      <div className="flex items-center justify-between gap-2 w-full">
+                                        <div className="min-w-0 flex-1">
+                                          <span className="font-medium truncate">{agent.name}</span>
+                                          {agent.description && (
+                                            <span className="ml-2 text-xs text-muted-foreground truncate">{agent.description}</span>
+                                          )}
+                                        </div>
+                                        <div className="shrink-0 inline-flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            className="px-1.5 py-0.5 text-xs rounded border hover:bg-accent"
+                                            onClick={async (e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              const nextName = window.prompt('Edit agent name', agent.name)?.trim();
+                                              if (!nextName) return;
+                                              try {
+                                                const { agent: updated } = await api.agents.update(agent._id, { name: nextName });
+                                                setAgents((prev) => prev.map((a) => (a._id === agent._id ? { ...a, ...updated } : a)) as any);
+                                              } catch {}
+                                            }}
+                                          >
+                                            Edit
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="px-1.5 py-0.5 text-xs rounded border border-destructive/50 hover:bg-destructive/10"
+                                            onClick={async (e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              const ok = window.confirm(`Delete agent \"${agent.name}\"?`);
+                                              if (!ok) return;
+                                              try {
+                                                await api.agents.remove(agent._id);
+                                                setAgents((prev) => prev.filter((a) => a._id !== agent._id));
+                                                if (activeAgent?._id === agent._id) setActiveAgent(null);
+                                              } catch {}
+                                            }}
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </PromptInputCommandItem>
+                                  ))}
+                                </PromptInputCommandGroup>
+                                <PromptInputCommandSeparator />
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
                     </PromptInputCommandList>
                   </PromptInputCommand>
                 </div>

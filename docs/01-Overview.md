@@ -15,14 +15,15 @@ Quild AI is a full-stack, production-ready AI chat application.
 ## High-level architecture
 ```
 Frontend (React)  <—HTTP—>  Backend (Express/TS)  <—>  Providers (Gemini/OpenRouter/Groq)
-                                                   \—>  Web Search (SerpAPI)
-                                                   \—>  Storage (Supabase for images)
-                                                   \—>  MongoDB (Users/Conversations/Messages/Agents)
+                                                  \—>  Google ADK Agent(s) (http://localhost:8000)
+                                                  \—>  Web Search (SerpAPI)
+                                                  \—>  Storage (Supabase for images)
+                                                  \—>  MongoDB (Users/Conversations/Messages/Agents)
 ```
 
 - Frontend: Vite + React + TypeScript, shadcn/ui-style components, lucide icons.
 - Backend: Express + TypeScript, SSE for streaming, JWT auth with refresh tokens.
-- Providers: Gemini by default, optional OpenRouter and Groq via backend proxy.
+- Providers: Gemini by default, optional OpenRouter and Groq via backend proxy. Optional Google ADK Agent integration via dedicated routes.
 - Web: SerpAPI used to fetch/search and enrich answers (optional).
 
 ## Core features
@@ -30,6 +31,7 @@ Frontend (React)  <—HTTP—>  Backend (Express/TS)  <—>  Providers (Gemini/O
 - Conversations: list/create/delete/rename and paginated messages.
 - Streaming: SSE with phases and structured events (sources, web summary).
 - Agents: CRUD + `@agent` mentions inline in the composer.
+- ADK: Call external Google ADK agents to handle messages for selected agents.
 - Images: basic image analysis endpoint with Supabase storage.
 
 ## Glossary

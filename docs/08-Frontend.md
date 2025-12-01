@@ -90,6 +90,25 @@ frontend/src/
 ### **API Client (`src/api/client.ts`)**
 * **Typed Endpoints:** Exposes strongly typed helpers for **auth**, **conversations**, **agents**, and **AI** services.
 * **Resilience:** Automatically retries the SSE call on a **401 Unauthorized** response by executing `auth.refresh()` to get a new token.
+* **Base URL:** Uses `VITE_API_BASE` env. Defaults to `http://localhost:4000/api` if not set.
+
+#### ADK endpoints (optional)
+Add these helpers to call ADK routes exposed by the backend:
+
+```ts
+export const api = {
+  // ...existing groups
+  adk: {
+    health: () => request<{ healthy: boolean; timestamp: string }>("/adk/health"),
+    listAgents: (refresh?: boolean) => request<{ agents: string[]; cached: boolean; timestamp: string }>(`/adk/agents${refresh ? "?refresh=true" : ""}`),
+    sendMessage: (body: { agentName: string; message: string; conversationId?: string }) =>
+      request<{ response: string; agentName: string; sessionId: string; timestamp: string; conversationId: string }>(
+        "/adk/message",
+        { method: "POST", body: JSON.stringify(body) }
+      ),
+  },
+};
+```
 
 ### **Dev Tips on State Management**
 * **Ephemeral State:** Store temporary, UI-only state (e.g., whether a dropdown is open) **locally** within components.
@@ -107,5 +126,15 @@ Use these commands from the **project root** directory.
 | `npm run dev --prefix frontend` | **Starts the development server.** |
 | `npm run build --prefix frontend` | **Generates the production build artifacts.** |
 | `npm run preview --prefix frontend` | **Serves the production build locally for testing.** |
+
+---
+
+## 🔧 Environment configuration
+
+- **VITE_API_BASE**: Set to your backend API base (e.g., `http://localhost:4000/api`).
+- Supabase (optional, for images):
+  - **REACT_APP_SUPABASE_URL**
+  - **REACT_APP_SUPABASE_ANON_KEY**
+  - **VITE_SUPABASE_BUCKET**
 
 ---

@@ -57,6 +57,9 @@
   - AI_PROVIDER (gemini|openrouter)
   - OPENROUTER_API_KEY, OPENROUTER_MODEL, OPENROUTER_REFERER, OPENROUTER_TITLE
   - SERPAPI_KEY
+  - GROQ_API_KEY, GROQ_MODEL
+  - SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_BUCKET
+  - ADK_AGENT_URL, ADK_TIMEOUT, ADK_RETRY_ATTEMPTS, ADK_RETRY_DELAY
 
 ## Environment variables (detailed)
 
@@ -78,6 +81,19 @@
 | SUPABASE_URL | yes | https://<ref>.supabase.co | Images storage |
 | SUPABASE_SERVICE_ROLE_KEY | yes | `...` | Server-side key |
 | SUPABASE_BUCKET | yes | quild-images | Bucket name |
+| ADK_AGENT_URL | no | http://localhost:8000 | Base URL for Google ADK service |
+| ADK_TIMEOUT | no | 30000 | Request timeout (ms) for ADK calls |
+| ADK_RETRY_ATTEMPTS | no | 3 | Retry attempts for ADK calls |
+| ADK_RETRY_DELAY | no | 1000 | Initial retry backoff (ms) |
+
+### Frontend env keys
+
+| Name | Required | Example | Notes |
+| --- | --- | --- | --- |
+| VITE_API_BASE | yes (in dev) | http://localhost:4000/api | Backend API base for fetch() |
+| REACT_APP_SUPABASE_URL | when using images | https://<ref>.supabase.co | Supabase URL |
+| REACT_APP_SUPABASE_ANON_KEY | when using images | `...` | Public anon key for client uploads |
+| VITE_SUPABASE_BUCKET | when using images | attachments | Bucket name used client-side |
 
 ## Rationale & alternatives
 
