@@ -2,7 +2,45 @@
 
 ## Executive Summary
 
-This document outlines a comprehensive plan to connect the frontend chat interface to a Google ADK (Agent Development Kit) agent running on `localhost:8000`. The solution will use the Express TypeScript backend as a proxy/API gateway to handle communication between the frontend and the ADK agent.
+This guide explains how Quild AI connects to a Google ADK (Agent Development Kit) agent running on `localhost:8000`. The Express/TypeScript backend proxies requests via `/api/adk/*`, and the frontend mention menu shows ADK agents together with your custom (DB) agents.
+
+### Quick Start (Local)
+1) Run ADK agent (Python venv):
+```bash
+adk web
+```
+Verify: `curl http://127.0.0.1:8000/list-apps` → returns `["agent_name", ...]`.
+
+2) Backend (`backend/.env` important vars):
+```env
+PORT=4000
+CLIENT_ORIGIN=http://localhost:5173
+ADK_AGENT_URL=http://localhost:8000
+```
+Start: `npm run dev --prefix backend`
+
+3) Frontend (`frontend/.env`):
+```env
+VITE_API_BASE=http://localhost:4000/api
+```
+Start: `npm run dev --prefix frontend`
+
+### Implemented Backend Endpoints
+- GET `/api/adk/health` → `{ healthy, timestamp }`
+- GET `/api/adk/agents?refresh=true` → `{ agents: string[], cached, timestamp }`
+- POST `/api/adk/message` body `{ agentName, message, conversationId? }` → `{ response, agentName, sessionId, conversationId, timestamp }`
+
+### Frontend UX
+- Typing `@` opens the mention menu.
+- ADK agents are fetched automatically on first open and shown above custom agents.
+- Selecting an ADK agent applies to the current message only; the next message reverts to normal unless you select again.
+
+### Troubleshooting
+- ADK agents not visible:
+  - Ensure ADK is running: `curl http://127.0.0.1:8000/list-apps`.
+  - Check backend health: `curl http://localhost:4000/api/adk/health`.
+  - Use the refresh icon in the menu (next to “Create new agent…”) to reload ADK and custom agents.
+- Message error “Model unavailable…”: confirm `ADK_AGENT_URL` matches your ADK server and it’s reachable from the backend host.
 
 ---
 
