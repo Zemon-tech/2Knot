@@ -40,4 +40,9 @@ export const env = {
   ELEVEN_STT_MODEL: process.env.ELEVEN_STT_MODEL || 'scribe_v1',
   ELEVEN_VOICE_ID: process.env.ELEVEN_VOICE_ID || '21m00Tcm4TlvDq8ikWAM',
   ELEVEN_AGENT_ID: process.env.ELEVEN_AGENT_ID || '',
+  // ADK Agent configuration
+  ADK_AGENT_URL: process.env.ADK_AGENT_URL || 'http://localhost:8000',
+  ADK_TIMEOUT: Number(process.env.ADK_TIMEOUT || 30000),
+  ADK_RETRY_ATTEMPTS: Number(process.env.ADK_RETRY_ATTEMPTS || 3),
+  ADK_RETRY_DELAY: Number(process.env.ADK_RETRY_DELAY || 1000),
 };

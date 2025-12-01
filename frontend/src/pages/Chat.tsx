@@ -57,7 +57,7 @@ function sanitizeAssistantText(input: string): string {
 
 type WebSource = { id: number; title: string; link: string; source?: string; favicon?: string; date?: string; snippet?: string };
 type Attachment = { url: string; mediaType?: string; filename?: string };
-type Message = { _id?: string; role: 'user' | 'assistant'; content: string; attachments?: Attachment[]; sources?: WebSource[]; webSummary?: string };
+type Message = { _id?: string; role: 'user' | 'assistant'; content: string; attachments?: Attachment[]; sources?: WebSource[]; webSummary?: string; adkAgentName?: string };
 type Agent = { _id: string; name: string; slug: string; description?: string; systemPrompt: string };
 
 export default function Chat() {
@@ -86,6 +86,11 @@ export default function Chat() {
   const [activeAgent, setActiveAgent] = useState<Agent | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [openCreateAgent, setOpenCreateAgent] = useState(false);
+  // ADK Agent state
+  const [adkAgents, setAdkAgents] = useState<string[]>([]);
+  const [adkAgentsLoading, setAdkAgentsLoading] = useState(false);
+  const [selectedAdkAgent, setSelectedAdkAgent] = useState<string | null>(null);
+  const [adkAgentError, setAdkAgentError] = useState<string | null>(null);
   const composerContainerRef = useRef<HTMLDivElement | null>(null);
   const [composerHeight, setComposerHeight] = useState<number>(0);
   const topTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -297,6 +302,29 @@ export default function Chat() {
       }
     })();
   }, []);
+
+  // Fetch ADK agents when @agents is typed
+  const fetchADKAgents = async (forceRefresh = false) => {
+    try {
+      setAdkAgentsLoading(true);
+      setAdkAgentError(null);
+      const { agents } = await api.adk.listAgents(forceRefresh);
+      setAdkAgents(agents);
+    } catch (error) {
+      setAdkAgentError('Failed to load ADK agents. Please try again.');
+      setAdkAgents([]);
+    } finally {
+      setAdkAgentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const query = mentionQuery?.toLowerCase();
+    // Support both @agent and @agents for ADK agents
+    if (mentionQuery && (query === 'agents' || query === 'agent') && adkAgents.length === 0 && !adkAgentsLoading) {
+      fetchADKAgents();
+    }
+  }, [mentionQuery, adkAgents.length, adkAgentsLoading]);
   useEffect(() => {
     try {
       localStorage.setItem('aiProvider', provider);
@@ -353,13 +381,104 @@ export default function Chat() {
   }
 
   async function onSend(userText: string, files?: Attachment[]) {
-    if (!userText.trim() || streaming) return;
-    setMessages((m) => [...m, { role: 'user', content: userText, attachments: files && files.length ? files : undefined }]);
+    // Validate input
+    const trimmedText = userText.trim();
+    if (!trimmedText || streaming) return;
+    
+    // Validate message length (max 10,000 characters)
+    const MAX_MESSAGE_LENGTH = 10000;
+    if (trimmedText.length > MAX_MESSAGE_LENGTH) {
+      setMessages((m) => [...m, { 
+        role: 'assistant', 
+        content: `Message is too long. Please keep messages under ${MAX_MESSAGE_LENGTH} characters.` 
+      }]);
+      return;
+    }
+    setMessages((m) => [...m, { role: 'user', content: trimmedText, attachments: files && files.length ? files : undefined }]);
     setStreaming(true);
     setPhase(null);
     assistantBuffer.current = '';
     setAutoScroll(true);
     let convId = activeId || undefined;
+    
+    // Check if ADK agent is selected
+    if (selectedAdkAgent) {
+      const maxRetries = 3;
+      let retryCount = 0;
+      let lastError: Error | null = null;
+
+      while (retryCount < maxRetries) {
+        try {
+          setAdkAgentError(null);
+          // Validate agent name
+          if (!selectedAdkAgent || selectedAdkAgent.trim().length === 0) {
+            throw new Error('Invalid agent selected');
+          }
+
+          const { response, agentName, conversationId: newConvId } = await api.adk.sendMessage({
+            agentName: selectedAdkAgent.trim(),
+            message: trimmedText,
+            conversationId: convId,
+          });
+          
+          // Update conversation ID if new one was created
+          if (newConvId && !convId) {
+            convId = newConvId;
+            setActiveId(newConvId);
+            navigate(`/c/${newConvId}`, { replace: true });
+          }
+          
+          // Add ADK agent response
+          setMessages((m) => [...m, { 
+            role: 'assistant', 
+            content: response,
+            adkAgentName: agentName 
+          }]);
+          
+          // Clear ADK agent selection for next message
+          setSelectedAdkAgent(null);
+          
+          // Refresh conversation list
+          if (convId) {
+            try {
+              window.dispatchEvent(new CustomEvent('conversations:refresh'));
+            } catch {}
+          }
+          
+          // Success - break out of retry loop
+          setStreaming(false);
+          setTimeout(() => setPhase(null), 500);
+          return;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error('Unknown error');
+          retryCount++;
+          
+          // If this is the last retry, show error
+          if (retryCount >= maxRetries) {
+            const errorMessage = lastError.message.includes('Model unavailable') 
+              ? lastError.message 
+              : 'Model unavailable, please try again';
+            
+            setMessages((m) => [...m, { 
+              role: 'assistant', 
+              content: `${errorMessage}\n\nYou can try again or select a different agent.`,
+              adkAgentName: selectedAdkAgent 
+            }]);
+            setAdkAgentError('Model unavailable, please try again');
+            setSelectedAdkAgent(null); // Clear selection on final failure
+            setStreaming(false);
+            setTimeout(() => setPhase(null), 500);
+            return;
+          }
+          
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+        }
+      }
+      
+      return;
+    }
+    
     try {
       // If image attachments provided, call image analysis endpoint and then reload conversation
       const imageFiles = (files || []).filter((f) => (f.mediaType || '').startsWith('image/'));
@@ -711,7 +830,7 @@ export default function Chat() {
                     const atts = (files || []).map((f) => ({ url: f.url, mediaType: (f as any).mediaType, filename: (f as any).filename }));
                     await onSend(text, atts.length ? atts : undefined);
                   }}
-                  groupClassName={`${(webSearch || !!activeAgent) ? '!rounded-md has-[>textarea[data-multiline=true]]:!rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
+                  groupClassName={`${(webSearch || !!activeAgent || !!selectedAdkAgent) ? '!rounded-md has-[>textarea[data-multiline=true]]:!rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
                 >
                   <PromptInputLeftAddon>
                     <PromptInputActionMenu>
@@ -744,6 +863,14 @@ export default function Chat() {
                         className="mt-1"
                       />
                     )}
+                    {selectedAdkAgent && (
+                      <PromptInputActiveModeWebsearch
+                        active={true}
+                        label={`ADK Agent: ${selectedAdkAgent}`}
+                        onClick={() => setSelectedAdkAgent(null)}
+                        className="mt-1"
+                      />
+                    )}
                   </PromptInputLeftAddon>
                   <PromptInputTextarea
                     placeholder=""
@@ -755,7 +882,7 @@ export default function Chat() {
                     ]}
                     suggestionInterval={3000}
                     className="py-2"
-                    forceMultilineLayout={webSearch || !!activeAgent}
+                    forceMultilineLayout={webSearch || !!activeAgent || !!selectedAdkAgent}
                     onMentionQueryChange={(q) => setMentionQuery(q)}
                     data-composer="top"
                     ref={topTextareaRef as any}
@@ -973,7 +1100,7 @@ export default function Chat() {
                   const atts = (files || []).map((f) => ({ url: f.url, mediaType: (f as any).mediaType, filename: (f as any).filename }));
                   await onSend(text, atts.length ? atts : undefined);
                 }}
-                groupClassName={`${(webSearch || !!activeAgent) ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
+                groupClassName={`${(webSearch || !!activeAgent || !!selectedAdkAgent) ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
               >
                 <PromptInputLeftAddon>
                   <PromptInputActionMenu>
@@ -1002,12 +1129,20 @@ export default function Chat() {
                       className="mt-1"
                     />
                   )}
+                  {selectedAdkAgent && (
+                    <PromptInputActiveModeWebsearch
+                      active={true}
+                      label={`ADK Agent: ${selectedAdkAgent}`}
+                      onClick={() => setSelectedAdkAgent(null)}
+                      className="mt-1"
+                    />
+                  )}
                 </PromptInputLeftAddon>
                 <PromptInputTextarea
                   placeholder="Send a message"
                   suggestions={[]}
                   className="py-2"
-                  forceMultilineLayout={webSearch || !!activeAgent}
+                  forceMultilineLayout={webSearch || !!activeAgent || !!selectedAdkAgent}
                   onMentionQueryChange={(q) => setMentionQuery(q)}
                   data-composer="bottom"
                   ref={bottomTextareaRef as any}
@@ -1031,73 +1166,155 @@ export default function Chat() {
                 <div className="absolute bottom-16 left-0 right-0 max-w-xs">
                   <PromptInputCommand className="border bg-popover text-popover-foreground rounded-lg shadow-md">
                     <PromptInputCommandList>
-                      <PromptInputCommandEmpty>No agents found.</PromptInputCommandEmpty>
-                      <PromptInputCommandGroup heading="Agents">
-                        {agents
-                          .filter((a) => {
-                            const q = mentionQuery.toLowerCase();
-                            return (
-                              a.name.toLowerCase().includes(q) ||
-                              a.slug.toLowerCase().includes(q)
-                            );
-                          })
-                          .map((agent) => (
-                            <PromptInputCommandItem
-                              key={agent._id}
-                              onSelect={() => {
-                                setActiveAgent(agent);
-                                // Insert @agent.slug at caret in the focused textarea, replacing the current @token
-                                let ta = (focusedComposer === 'bottom' ? bottomTextareaRef.current : topTextareaRef.current);
-                                if (!ta) {
-                                  ta = (focusedComposer === 'bottom'
-                                    ? (document.querySelector('textarea[data-composer="bottom"]') as HTMLTextAreaElement | null)
-                                    : (document.querySelector('textarea[data-composer="top"]') as HTMLTextAreaElement | null))
-                                    || (document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null);
-                                }
-                                try {
-                                  if (ta) {
-                                    const pos = ta.selectionStart ?? ta.value.length;
-                                    const uptoCaret = ta.value.slice(0, pos);
-                                    const lastBreak = Math.max(uptoCaret.lastIndexOf(' '), uptoCaret.lastIndexOf('\n'), uptoCaret.lastIndexOf('\t'));
-                                    const startIdx = lastBreak + 1;
-                                    const token = uptoCaret.slice(startIdx);
-                                    let before = ta.value.slice(0, startIdx);
-                                    const after = ta.value.slice(pos);
-                                    const insert = `@${agent.slug} `;
-                                    if (token.startsWith('@')) {
-                                      // replace token from startIdx..pos
-                                      ta.value = before + insert + after;
-                                    } else {
-                                      ta.value = ta.value.slice(0, pos) + insert + after;
+                      {/* Show ADK agents when @agent or @agents is typed */}
+                      {mentionQuery.toLowerCase() === 'agents' || mentionQuery.toLowerCase() === 'agent' ? (
+                        <>
+                          {adkAgentsLoading ? (
+                            <PromptInputCommandEmpty>Loading ADK agents…</PromptInputCommandEmpty>
+                          ) : adkAgents.length > 0 ? (
+                            <>
+                              <PromptInputCommandGroup heading="ADK Agents">
+                                {adkAgents
+                                  .filter((agentName) => agentName && agentName.trim().length > 0 && agentName.length <= 200) // Filter out invalid agent names
+                                  .slice(0, 50) // Limit to 50 agents for performance
+                                  .map((agentName) => (
+                                  <PromptInputCommandItem
+                                    key={agentName}
+                                    onSelect={() => {
+                                      // Validate agent name before setting
+                                      const trimmed = agentName.trim();
+                                      if (trimmed.length > 0 && trimmed.length <= 200) {
+                                        setSelectedAdkAgent(trimmed);
+                                      }
+                                      // Remove @agents from textarea
+                                      let ta = (focusedComposer === 'bottom' ? bottomTextareaRef.current : topTextareaRef.current);
+                                      if (!ta) {
+                                        ta = (focusedComposer === 'bottom'
+                                          ? (document.querySelector('textarea[data-composer="bottom"]') as HTMLTextAreaElement | null)
+                                          : (document.querySelector('textarea[data-composer="top"]') as HTMLTextAreaElement | null))
+                                          || (document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null);
+                                      }
+                                      try {
+                                        if (ta) {
+                                          const pos = ta.selectionStart ?? ta.value.length;
+                                          const uptoCaret = ta.value.slice(0, pos);
+                                          const lastBreak = Math.max(uptoCaret.lastIndexOf(' '), uptoCaret.lastIndexOf('\n'), uptoCaret.lastIndexOf('\t'));
+                                          const startIdx = lastBreak + 1;
+                                          const token = uptoCaret.slice(startIdx);
+                                          let before = ta.value.slice(0, startIdx);
+                                          const after = ta.value.slice(pos);
+                                          // Remove @agent or @agents token
+                                          const tokenLower = token.toLowerCase();
+                                          if (tokenLower === '@agents' || tokenLower === '@agent' || tokenLower.startsWith('@agents') || tokenLower.startsWith('@agent')) {
+                                            ta.value = before + after;
+                                            const newCaret = before.length;
+                                            ta.setSelectionRange(newCaret, newCaret);
+                                            const evt = new Event('input', { bubbles: true });
+                                            ta.dispatchEvent(evt);
+                                          }
+                                        }
+                                      } catch {}
+                                      setMentionQuery(null);
+                                    }}
+                                  >
+                                    <span className="font-medium">{agentName}</span>
+                                  </PromptInputCommandItem>
+                                ))}
+                              </PromptInputCommandGroup>
+                              <PromptInputCommandSeparator />
+                              <PromptInputCommandItem
+                                onSelect={() => {
+                                  fetchADKAgents(true); // Force refresh
+                                }}
+                              >
+                                Refresh ADK agents
+                              </PromptInputCommandItem>
+                            </>
+                          ) : (
+                            <>
+                              <PromptInputCommandEmpty>No ADK agents available.</PromptInputCommandEmpty>
+                              <PromptInputCommandSeparator />
+                              <PromptInputCommandItem
+                                onSelect={() => {
+                                  fetchADKAgents(true); // Force refresh
+                                }}
+                              >
+                                Refresh ADK agents
+                              </PromptInputCommandItem>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <PromptInputCommandEmpty>No agents found.</PromptInputCommandEmpty>
+                          <PromptInputCommandGroup heading="Agents">
+                            {agents
+                              .filter((a) => {
+                                const q = mentionQuery.toLowerCase();
+                                return (
+                                  a.name.toLowerCase().includes(q) ||
+                                  a.slug.toLowerCase().includes(q)
+                                );
+                              })
+                              .map((agent) => (
+                                <PromptInputCommandItem
+                                  key={agent._id}
+                                  onSelect={() => {
+                                    setActiveAgent(agent);
+                                    // Insert @agent.slug at caret in the focused textarea, replacing the current @token
+                                    let ta = (focusedComposer === 'bottom' ? bottomTextareaRef.current : topTextareaRef.current);
+                                    if (!ta) {
+                                      ta = (focusedComposer === 'bottom'
+                                        ? (document.querySelector('textarea[data-composer="bottom"]') as HTMLTextAreaElement | null)
+                                        : (document.querySelector('textarea[data-composer="top"]') as HTMLTextAreaElement | null))
+                                        || (document.querySelector('textarea[data-composer]') as HTMLTextAreaElement | null);
                                     }
-                                    const newCaret = (before + insert).length;
-                                    ta.setSelectionRange(newCaret, newCaret);
-                                    // dispatch input event so autosize/onMention update
-                                    const evt = new Event('input', { bubbles: true });
-                                    ta.dispatchEvent(evt);
-                                  }
-                                } catch {}
-                                setMentionQuery(null);
-                              }}
-                            >
-                              <span className="font-medium">{agent.name}</span>
-                              {agent.description && (
-                                <span className="ml-2 text-xs text-muted-foreground truncate">
-                                  {agent.description}
-                                </span>
-                              )}
-                            </PromptInputCommandItem>
-                          ))}
-                      </PromptInputCommandGroup>
-                      <PromptInputCommandSeparator />
-                      <PromptInputCommandItem
-                        onSelect={() => {
-                          setOpenCreateAgent(true);
-                          setMentionQuery(null);
-                        }}
-                      >
-                        Create new agent…
-                      </PromptInputCommandItem>
+                                    try {
+                                      if (ta) {
+                                        const pos = ta.selectionStart ?? ta.value.length;
+                                        const uptoCaret = ta.value.slice(0, pos);
+                                        const lastBreak = Math.max(uptoCaret.lastIndexOf(' '), uptoCaret.lastIndexOf('\n'), uptoCaret.lastIndexOf('\t'));
+                                        const startIdx = lastBreak + 1;
+                                        const token = uptoCaret.slice(startIdx);
+                                        let before = ta.value.slice(0, startIdx);
+                                        const after = ta.value.slice(pos);
+                                        const insert = `@${agent.slug} `;
+                                        if (token.startsWith('@')) {
+                                          // replace token from startIdx..pos
+                                          ta.value = before + insert + after;
+                                        } else {
+                                          ta.value = ta.value.slice(0, pos) + insert + after;
+                                        }
+                                        const newCaret = (before + insert).length;
+                                        ta.setSelectionRange(newCaret, newCaret);
+                                        // dispatch input event so autosize/onMention update
+                                        const evt = new Event('input', { bubbles: true });
+                                        ta.dispatchEvent(evt);
+                                      }
+                                    } catch {}
+                                    setMentionQuery(null);
+                                  }}
+                                >
+                                  <span className="font-medium">{agent.name}</span>
+                                  {agent.description && (
+                                    <span className="ml-2 text-xs text-muted-foreground truncate">
+                                      {agent.description}
+                                    </span>
+                                  )}
+                                </PromptInputCommandItem>
+                              ))}
+                          </PromptInputCommandGroup>
+                          <PromptInputCommandSeparator />
+                          <PromptInputCommandItem
+                            onSelect={() => {
+                              setOpenCreateAgent(true);
+                              setMentionQuery(null);
+                            }}
+                          >
+                            Create new agent…
+                          </PromptInputCommandItem>
+                        </>
+                      )}
                     </PromptInputCommandList>
                   </PromptInputCommand>
                 </div>

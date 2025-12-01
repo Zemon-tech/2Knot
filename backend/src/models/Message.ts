@@ -33,6 +33,8 @@ const MessageSchema = new Schema(
     ],
     webSummary: { type: String },
     researchBrief: { type: String },
+    // Optional: name of ADK agent if message was sent to ADK
+    adkAgentName: { type: String },
   },
   { timestamps: true }
 );

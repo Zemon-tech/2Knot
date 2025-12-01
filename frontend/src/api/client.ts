@@ -62,6 +62,27 @@ export const api = {
       }),
     remove: (id: string) => request<{ ok: true }>(`/agents/${id}`, { method: "DELETE" }),
   },
+  adk: {
+    listAgents: (refresh?: boolean) => {
+      const url = refresh ? '/adk/agents?refresh=true' : '/adk/agents';
+      return request<{ agents: string[]; cached?: boolean; timestamp?: string }>(url);
+    },
+    sendMessage: (body: {
+      agentName: string;
+      message: string;
+      conversationId?: string;
+    }) => request<{
+      response: string;
+      agentName: string;
+      sessionId: string;
+      timestamp: string;
+      conversationId?: string;
+    }>('/adk/message', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+    checkHealth: () => request<{ healthy: boolean; timestamp: string }>('/adk/health'),
+  },
   ai: {
     stream: (
       body: { conversationId?: string; message: string; attachments?: { url: string; mediaType?: string; filename?: string }[]; provider?: 'gemini' | 'openrouter' | 'groq'; webSearch?: boolean; web?: { gl?: string; hl?: string; location?: string; num?: number; maxSources?: number }; agentId?: string },
