@@ -68,6 +68,24 @@ frontend/src/
 ### **1. Composer (`prompt-input.tsx`)**
 * **Comprehensive Input:** Handles file attachments, drag-and-drop, clipboard paste, dynamic autosizing, and an extensible action menu.
 * **Mention Support:** The `PromptInputTextarea` exposes `onMentionQueryChange` and `onMentionRemoved` for agent selection logic.
+* **Rectangle vs Pill Behavior (Websearch & Multiline):**
+  - The outer container is `InputGroup` (`components/ui/input-group.tsx`), which is a **pill by default** (`!rounded-full`) and becomes a **rectangle** when certain conditions are met.
+  - The inner control is `PromptInputTextarea`, which computes an `isEffectivelyMultiline` flag and sets  
+    `data-multiline="true"` when:
+    - The textarea visually grows beyond a single line (autosize based on `scrollHeight`), **or**
+    - The value contains a newline (`\n`), e.g. from **Shift+Enter**, **or**
+    - `forceMultilineLayout` is `true` (used when websearch or an agent is active).
+  - `InputGroup` listens for that flag with Tailwind’s `has-*` selectors:
+    - `has-[>textarea[data-multiline=true]]:!rounded-md` → switch from pill to rectangle.
+    - `has-[>textarea[data-multiline=true]]:items-start` and related rules → top-align the textarea and move it onto its own row.
+    - `group-has-[>textarea[data-multiline=true]]/input-group:...` on addons/footer → move the **+**, websearch/agent pills, mic, and send button to the bottom row.
+  - **Websearch / Agent active:** `Chat.tsx` passes a `groupClassName` that already uses a rectangular shape:
+    - If `webSearch || activeAgent || selectedAdkAgent` is truthy, we apply a base `rounded-md` style, so the composer starts rectangular even on a single line.
+    - We *always* append `has-[>textarea[data-multiline=true]]:!rounded-md`, so typing multiple lines (or pressing Shift+Enter) flips the layout into the same rectangular, top-aligned mode even when websearch/agent are **off**.
+  - **Mental model:**  
+    - `PromptInputTextarea` decides **when the input is conceptually multiline** and exposes that via `data-multiline`.  
+    - `InputGroup` + Tailwind `has-*` selectors decide **how the container should look and align** based on that flag.  
+    - Page-level code (`Chat.tsx`) decides **when we want rectangular-by-default** (e.g. websearch/agents) by tweaking `groupClassName`.
 
 ### **2. Agents & Mentions (`@`)**
 * **Activation:** Typing the **`@`** symbol in the composer triggers a compact, filtered list of available Agents.
