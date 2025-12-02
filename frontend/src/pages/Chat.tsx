@@ -826,7 +826,7 @@ export default function Chat() {
                     const atts = (files || []).map((f) => ({ url: f.url, mediaType: (f as any).mediaType, filename: (f as any).filename }));
                     await onSend(text, atts.length ? atts : undefined);
                   }}
-                  groupClassName={`${(webSearch || !!activeAgent || !!selectedAdkAgent) ? '!rounded-md has-[>textarea[data-multiline=true]]:!rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
+                  groupClassName={`${(webSearch || !!activeAgent || !!selectedAdkAgent) ? '!rounded-md' : 'rounded-3xl'} has-[>textarea[data-multiline=true]]:!rounded-md bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
                 >
                   <PromptInputLeftAddon>
                     <PromptInputActionMenu>
@@ -1096,7 +1096,7 @@ export default function Chat() {
                   const atts = (files || []).map((f) => ({ url: f.url, mediaType: (f as any).mediaType, filename: (f as any).filename }));
                   await onSend(text, atts.length ? atts : undefined);
                 }}
-                groupClassName={`${(webSearch || !!activeAgent || !!selectedAdkAgent) ? 'rounded-md' : 'rounded-3xl'} bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
+                groupClassName={`${(webSearch || !!activeAgent || !!selectedAdkAgent) ? 'rounded-md' : 'rounded-3xl'} has-[>textarea[data-multiline=true]]:!rounded-md bg-card px-3 py-2 border border-input shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0 has-[[data-slot=input-group-control]:focus-visible]:border-input`}
               >
                 <PromptInputLeftAddon>
                   <PromptInputActionMenu>

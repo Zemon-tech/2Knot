@@ -950,6 +950,7 @@ export const PromptInputTextarea = ({
   const [isComposing, setIsComposing] = useState(false);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
+  const [hasNewline, setHasNewline] = useState(false);
   const [currentPlaceholder, setCurrentPlaceholder] = useState(placeholder);
   const rotIndexRef = useRef(0);
   const [flipClass, setFlipClass] = useState("");
@@ -979,6 +980,7 @@ export const PromptInputTextarea = ({
     const scrollH = el.scrollHeight;
     const nextH = Math.min(maxH, Math.max(baseH, scrollH));
     el.style.height = `${nextH}px`;
+    // Treat as multiline if the box visually grows beyond a single line.
     setIsMultiline(nextH > baseH + 1);
   }, []);
 
@@ -1161,6 +1163,7 @@ export const PromptInputTextarea = ({
         value: controller.textInput.value,
         onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
           const next = e.currentTarget.value;
+          setHasNewline(next.includes("\n"));
           controller.textInput.setInput(next);
           onChange?.(e);
           updateMentionFromValue(next);
@@ -1171,11 +1174,21 @@ export const PromptInputTextarea = ({
     : {
         onChange: (e: ChangeEvent<HTMLTextAreaElement>) => {
           const next = e.currentTarget.value;
+          setHasNewline(next.includes("\n"));
           onChange?.(e);
           updateMentionFromValue(next);
           queueMicrotask(autosize);
         },
       };
+
+  // Keep newline flag in sync when the value is controlled externally.
+  useEffect(() => {
+    if (!controller) return;
+    setHasNewline(controller.textInput.value.includes("\n"));
+  }, [controller, controller?.textInput.value]);
+
+  const isEffectivelyMultiline =
+    (forceMultilineLayout ?? false) || isMultiline || hasNewline;
 
   return (
     <InputGroupTextarea
@@ -1183,7 +1196,7 @@ export const PromptInputTextarea = ({
       className={cn("field-sizing-content min-h-0 overflow-y-auto py-2 text-sm leading-6", flipClass, className)}
       name="message"
       rows={1}
-      data-multiline={(forceMultilineLayout || isMultiline) ? 'true' : 'false'}
+      data-multiline={isEffectivelyMultiline ? "true" : "false"}
       onCompositionEnd={() => setIsComposing(false)}
       onCompositionStart={() => setIsComposing(true)}
       onKeyDown={(e) => { handleKeyDown(e); queueMicrotask(autosize); }}
