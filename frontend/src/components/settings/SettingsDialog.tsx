@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { cn } from '@/lib/utils'
 import { Trash2 } from 'lucide-react'
 import { api } from '../../api/client'
@@ -25,6 +26,20 @@ export function SettingsDialog({ open, onOpenChange, accent, setAccent }: Settin
     const saved = localStorage.getItem('contentPreset') as any
     return saved || 'normal'
   })
+  const [aiProvider, setAiProvider] = React.useState<'gemini' | 'openrouter' | 'groq'>(() => {
+    const saved = localStorage.getItem('aiProvider') as 'gemini' | 'openrouter' | 'groq' | null
+    return saved === 'openrouter' || saved === 'groq' ? saved : 'gemini'
+  })
+  const [openrouterModel, setOpenrouterModel] = React.useState<string>(() => {
+    return localStorage.getItem('openrouterModel') || 'openrouter/auto'
+  })
+  const [groqModel, setGroqModel] = React.useState<string>(() => {
+    return localStorage.getItem('groqModel') || 'llama-3.3-70b-versatile'
+  })
+  const [modelPickerOpen, setModelPickerOpen] = React.useState(false)
+  const [modelsLoading, setModelsLoading] = React.useState(false)
+  const [openRouterModels, setOpenRouterModels] = React.useState<{ id: string; name?: string }[]>([])
+  const [groqModels, setGroqModels] = React.useState<{ id: string; name?: string }[]>([])
   const [images, setImages] = React.useState<{ url: string; mediaType?: string; filename?: string }[]>([])
   const [imagesLoading, setImagesLoading] = React.useState(false)
   const [imagesError, setImagesError] = React.useState<string | null>(null)
@@ -92,6 +107,24 @@ export function SettingsDialog({ open, onOpenChange, accent, setAccent }: Settin
     root.style.setProperty('--fw-h4', String(w.h4))
     root.style.setProperty('--fw-body', String(w.body))
   }, [contentScale, contentPreset])
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('aiProvider', aiProvider)
+    } catch {}
+  }, [aiProvider])
+
+  React.useEffect(() => {
+    try {
+      if (openrouterModel) localStorage.setItem('openrouterModel', openrouterModel)
+    } catch {}
+  }, [openrouterModel])
+
+  React.useEffect(() => {
+    try {
+      if (groqModel) localStorage.setItem('groqModel', groqModel)
+    } catch {}
+  }, [groqModel])
 
   React.useEffect(() => {
     if (!open) setActiveSection('general')
@@ -176,6 +209,92 @@ export function SettingsDialog({ open, onOpenChange, accent, setAccent }: Settin
                       </button>
                     ))}
                   </div>
+                </section>
+                <section className="space-y-2">
+                  <div className="text-sm font-medium">Default AI Model</div>
+                  <div className="text-xs text-muted-foreground">Choose which provider to use by default. Chat uses this unless you pick a model per-conversation.</div>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { key: 'gemini', label: 'Gemini' },
+                      { key: 'openrouter', label: 'OpenRouter' },
+                      { key: 'groq', label: 'Groq' },
+                    ] as const).map(({ key, label }) => (
+                      <button
+                        key={key}
+                        aria-pressed={aiProvider===key}
+                        onClick={() => setAiProvider(key)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-md border text-sm',
+                          aiProvider===key ? 'bg-muted text-foreground border-input' : ''
+                        )}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {(aiProvider === 'openrouter' || aiProvider === 'groq') && (
+                    <div className="space-y-2 pt-1">
+                      <div className="text-xs text-muted-foreground">{aiProvider === 'openrouter' ? 'OpenRouter Model' : 'Groq Model'}</div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={async () => {
+                            setModelPickerOpen(true)
+                            setModelsLoading(true)
+                            try {
+                              if (aiProvider === 'openrouter') {
+                                const { models } = await api.ai.modelsOpenRouter()
+                                setOpenRouterModels(models)
+                              } else if (aiProvider === 'groq') {
+                                const { models } = await api.ai.modelsGroq()
+                                setGroqModels(models)
+                              }
+                            } finally {
+                              setModelsLoading(false)
+                            }
+                          }}
+                          className="px-3 py-2 rounded-md border text-sm bg-background"
+                        >
+                          {aiProvider === 'openrouter' ? openrouterModel : groqModel}
+                        </button>
+                        <span className="text-xs text-muted-foreground">Click to select</span>
+                      </div>
+                      <Dialog open={modelPickerOpen} onOpenChange={setModelPickerOpen}>
+                        <DialogContent className="sm:max-w-xl p-0">
+                          <Command className="**:data-[slot=command-input-wrapper]:h-auto">
+                            <CommandInput placeholder="Search models…" />
+                            <CommandList>
+                              {modelsLoading && (
+                                <div className="p-3 text-sm text-muted-foreground">Loading models…</div>
+                              )}
+                              {!modelsLoading && (
+                                <>
+                                  <CommandEmpty>No models found.</CommandEmpty>
+                                  <CommandGroup heading={aiProvider === 'openrouter' ? 'OpenRouter' : 'Groq'}>
+                                    {(aiProvider === 'openrouter' ? openRouterModels : groqModels).map((m) => (
+                                      <CommandItem
+                                        key={m.id}
+                                        value={m.id}
+                                        onSelect={(val) => {
+                                          if (aiProvider === 'openrouter') setOpenrouterModel(val)
+                                          else setGroqModel(val)
+                                          setModelPickerOpen(false)
+                                        }}
+                                      >
+                                        <div className="flex flex-col min-w-0">
+                                          <span className="font-medium truncate">{m.name || m.id}</span>
+                                          <span className="text-xs text-muted-foreground truncate">{m.id}</span>
+                                        </div>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  )}
                 </section>
                 <section className="space-y-2">
                   <div className="text-sm font-medium">Text size</div>
