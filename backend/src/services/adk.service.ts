@@ -154,9 +154,10 @@ class ADKService {
       this.log(`Sending message to ADK agent: ${agentName}`, { userId, sessionId });
       const response = await this.sendWithRetry(adkRequest);
 
-      // Extract response text from ADK response
-      // Note: Response format may need adjustment based on actual ADK agent response
+      // Extract response text and any available web sources from ADK response
+      // ADK typically returns an array of events; we parse both content text and groundingMetadata
       const responseText = this.extractResponseText(response);
+      const sources = this.extractSources(response);
 
       this.log(`Successfully received response from ADK agent: ${agentName}`);
       return {
@@ -164,6 +165,7 @@ class ADKService {
         agentName: agentName,
         sessionId: sessionId,
         timestamp: new Date().toISOString(),
+        ...(sources && sources.length ? { sources } : {}),
       };
     } catch (error) {
       this.log(`Error sending message to ADK agent: ${agentName}`, error);
@@ -267,39 +269,39 @@ class ADKService {
    * Extract response text from ADK agent response
    * ADK returns an array of events, we need to extract text from content.parts[0].text
    */
-  private extractResponseText(response: unknown): string {
+  extractResponseText(response: unknown): string {
     // If response is already a string, return it
     if (typeof response === 'string') {
       return response;
     }
 
     // ADK returns an array of events: [{ content: { parts: [{ text: "..." }] } }]
+    // For streaming, each event may contain only a partial fragment; we want the
+    // cumulative text across ALL events.
     if (Array.isArray(response) && response.length > 0) {
-      // Find the first event with content.parts containing text
+      const allTexts: string[] = [];
       for (const event of response) {
         if (typeof event === 'object' && event !== null) {
           const eventObj = event as Record<string, unknown>;
-          
+
           // Check for ADK event structure: { content: { parts: [{ text: "..." }] } }
           if (eventObj.content && typeof eventObj.content === 'object' && eventObj.content !== null) {
             const content = eventObj.content as Record<string, unknown>;
             if (Array.isArray(content.parts) && content.parts.length > 0) {
-              // Extract text from all parts and join them
-              const texts: string[] = [];
               for (const part of content.parts) {
                 if (typeof part === 'object' && part !== null) {
                   const partObj = part as Record<string, unknown>;
                   if (typeof partObj.text === 'string') {
-                    texts.push(partObj.text);
+                    allTexts.push(partObj.text);
                   }
                 }
-              }
-              if (texts.length > 0) {
-                return texts.join('\n');
               }
             }
           }
         }
+      }
+      if (allTexts.length > 0) {
+        return allTexts.join('\n');
       }
     }
 
@@ -351,6 +353,123 @@ class ADKService {
 
     // Fallback: stringify the response
     return JSON.stringify(response);
+  }
+
+  /**
+   * Extract web sources from grounding metadata in ADK agent response.
+   *
+   * We look for structures like:
+   *   event.content.groundingMetadata.groundingChunks[*].web.{ title, uri }
+   * and convert them into the same shape used by the main web search flow.
+   */
+  extractSources(response: unknown): {
+    id: number;
+    title: string;
+    link: string;
+    source?: string;
+    favicon?: string;
+    date?: string;
+    snippet?: string;
+  }[] {
+    const results: {
+      id: number;
+      title: string;
+      link: string;
+      source?: string;
+      favicon?: string;
+      date?: string;
+      snippet?: string;
+    }[] = [];
+
+    const addFromGroundingChunks = (groundingChunks: any[]) => {
+      for (const chunk of groundingChunks || []) {
+        try {
+          const web = chunk?.web || chunk?.source || chunk?.document;
+          if (!web || typeof web !== 'object') continue;
+
+          const uri = typeof web.uri === 'string'
+            ? web.uri
+            : typeof web.url === 'string'
+              ? web.url
+              : typeof web.link === 'string'
+                ? web.link
+                : undefined;
+          const title = typeof web.title === 'string'
+            ? web.title
+            : typeof web.displayName === 'string'
+              ? web.displayName
+              : (uri || '');
+          if (!uri) continue;
+
+          let host: string | undefined;
+          try {
+            host = new URL(uri).hostname;
+          } catch {
+            host = undefined;
+          }
+
+          // For Vertex AI Search grounding redirect URLs, prefer the human-readable domain
+          // from the title (e.g. "theguardian.com") so the UI shows meaningful chips.
+          const titleDomain = (() => {
+            if (typeof web.title === 'string') {
+              const t = web.title.trim();
+              // Heuristic: looks like a bare domain
+              if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(t)) return t.toLowerCase();
+            }
+            return undefined;
+          })();
+
+          const effectiveHost = host === 'vertexaisearch.cloud.google.com' && titleDomain
+            ? titleDomain
+            : host;
+
+          const favicon = effectiveHost ? `https://icons.duckduckgo.com/ip3/${effectiveHost}.ico` : undefined;
+          // Avoid duplicates by link
+          if (results.some((r) => r.link === uri)) continue;
+          results.push({
+            id: results.length + 1,
+            title,
+            link: uri,
+            source: effectiveHost || undefined,
+            favicon,
+          });
+        } catch {
+          continue;
+        }
+      }
+    };
+
+    const scan = (obj: any) => {
+      if (!obj || typeof obj !== 'object') return;
+
+      // If this object itself has groundingMetadata, process it
+      const gmDirect = (obj as any).groundingMetadata || (obj as any).grounding_metadata;
+      if (gmDirect && typeof gmDirect === 'object' && Array.isArray((gmDirect as any).groundingChunks || (gmDirect as any).grounding_chunks)) {
+        const chunks = (gmDirect as any).groundingChunks || (gmDirect as any).grounding_chunks;
+        addFromGroundingChunks(chunks as any[]);
+      }
+
+      // Look for content.groundingMetadata.groundingChunks (common ADK structure)
+      const content = (obj as any).content;
+      if (content && typeof content === 'object') {
+        const gm = (content as any).groundingMetadata || (content as any).grounding_metadata;
+        if (gm && typeof gm === 'object' && Array.isArray((gm as any).groundingChunks || (gm as any).grounding_chunks)) {
+          const chunks = (gm as any).groundingChunks || (gm as any).grounding_chunks;
+          addFromGroundingChunks(chunks as any[]);
+        }
+      }
+
+      // Recurse into nested objects and arrays
+      for (const key of Object.keys(obj)) {
+        const value = (obj as any)[key];
+        if (value && typeof value === 'object') {
+          scan(value);
+        }
+      }
+    };
+
+    scan(response as any);
+    return results;
   }
 
   /**

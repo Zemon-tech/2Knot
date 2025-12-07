@@ -14,6 +14,16 @@ export interface ADKMessageResponse {
   agentName: string; // Agent that responded
   sessionId: string; // Generated session ID (for this message)
   timestamp: string; // Response timestamp
+  // Optional: web search sources derived from grounding metadata
+  sources?: {
+    id: number;
+    title: string;
+    link: string;
+    source?: string;
+    favicon?: string;
+    date?: string;
+    snippet?: string;
+  }[];
 }
 
 export interface ADKRunRequest {

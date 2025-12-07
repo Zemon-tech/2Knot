@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middleware/auth';
-import { listADKAgents, sendADKMessage, checkADKHealth } from '../controllers/adkController';
+import { listADKAgents, sendADKMessage, checkADKHealth, streamADKMessage } from '../controllers/adkController';
 
 export const adkRouter = Router();
 
@@ -19,4 +19,5 @@ const adkRateLimiter = rateLimit({
 adkRouter.get('/health', checkADKHealth);
 adkRouter.get('/agents', adkRateLimiter, listADKAgents);
 adkRouter.post('/message', adkRateLimiter, sendADKMessage);
+adkRouter.post('/stream', adkRateLimiter, streamADKMessage);
 

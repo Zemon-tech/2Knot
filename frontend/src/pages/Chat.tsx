@@ -401,77 +401,64 @@ export default function Chat() {
     
     // Check if ADK agent is selected
     if (selectedAdkAgent) {
-      const maxRetries = 3;
-      let retryCount = 0;
-      let lastError: Error | null = null;
-
-      while (retryCount < maxRetries) {
-        try {
-          // Validate agent name
-          if (!selectedAdkAgent || selectedAdkAgent.trim().length === 0) {
-            throw new Error('Invalid agent selected');
-          }
-
-          const { response, agentName, conversationId: newConvId } = await api.adk.sendMessage({
-            agentName: selectedAdkAgent.trim(),
-            message: trimmedText,
-            conversationId: convId,
-          });
-          
-          // Update conversation ID if new one was created
-          if (newConvId && !convId) {
-            convId = newConvId;
-            setActiveId(newConvId);
-            navigate(`/c/${newConvId}`, { replace: true });
-          }
-          
-          // Add ADK agent response
-          setMessages((m) => [...m, { 
-            role: 'assistant', 
-            content: response,
-            adkAgentName: agentName 
-          }]);
-          
-          // Clear ADK agent selection for next message
-          setSelectedAdkAgent(null);
-          
-          // Refresh conversation list
-          if (convId) {
-            try {
-              window.dispatchEvent(new CustomEvent('conversations:refresh'));
-            } catch {}
-          }
-          
-          // Success - break out of retry loop
-          setStreaming(false);
-          setTimeout(() => setPhase(null), 500);
-          return;
-        } catch (error) {
-          lastError = error instanceof Error ? error : new Error('Unknown error');
-          retryCount++;
-          
-          // If this is the last retry, show error
-          if (retryCount >= maxRetries) {
-            const errorMessage = lastError.message.includes('Model unavailable') 
-              ? lastError.message 
-              : 'Model unavailable, please try again';
-            
-            setMessages((m) => [...m, { 
-              role: 'assistant', 
-              content: `${errorMessage}\n\nYou can try again or select a different agent.`,
-              adkAgentName: selectedAdkAgent 
-            }]);
-            setSelectedAdkAgent(null); // Clear selection on final failure
-            setStreaming(false);
-            setTimeout(() => setPhase(null), 500);
-            return;
-          }
-          
-          // Wait before retrying (exponential backoff)
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-        }
+      // Validate agent name
+      if (!selectedAdkAgent || selectedAdkAgent.trim().length === 0) {
+        setMessages((m) => [...m, { role: 'assistant', content: 'Invalid ADK agent selected.' }]);
+        setStreaming(false);
+        return;
       }
-      
+
+      const agentName = selectedAdkAgent.trim();
+      let bufferLocal = '';
+
+      // Seed an empty assistant message for this ADK agent, then stream into it
+      setMessages((m) => [...m, { role: 'assistant', content: '', adkAgentName: agentName }]);
+
+      try {
+        await api.adk.stream(
+          { agentName, message: trimmedText, conversationId: convId },
+          {
+            onDelta: (delta) => {
+              bufferLocal += delta;
+              const sanitized = sanitizeAssistantText(bufferLocal);
+              setMessages((m) => {
+                const last = m[m.length - 1];
+                if (last && last.role === 'assistant' && last.adkAgentName === agentName) {
+                  return [...m.slice(0, -1), { ...last, content: sanitized }];
+                }
+                return [...m, { role: 'assistant', content: sanitized, adkAgentName: agentName }];
+              });
+            },
+            onSources: (sources) => {
+              setMessages((m) => {
+                const last = m[m.length - 1];
+                if (last && last.role === 'assistant' && last.adkAgentName === agentName) {
+                  return [...m.slice(0, -1), { ...last, sources }];
+                }
+                return [...m, { role: 'assistant', content: '', adkAgentName: agentName, sources }];
+              });
+            },
+            onDone: ({ conversationId }) => {
+              if (conversationId && !convId) {
+                convId = conversationId;
+                setActiveId(conversationId);
+                navigate(`/c/${conversationId}`, { replace: true });
+              }
+            },
+          }
+        );
+      } catch (error) {
+        setMessages((m) => [...m, {
+          role: 'assistant',
+          content: 'ADK stream failed. Please try again.',
+          adkAgentName: agentName,
+        }]);
+      } finally {
+        setSelectedAdkAgent(null);
+        setStreaming(false);
+        setTimeout(() => setPhase(null), 500);
+      }
+
       return;
     }
     

@@ -77,11 +77,56 @@ export const api = {
       sessionId: string;
       timestamp: string;
       conversationId?: string;
+      sources?: { id: number; title: string; link: string; source?: string; favicon?: string; date?: string; snippet?: string }[];
     }>('/adk/message', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
     checkHealth: () => request<{ healthy: boolean; timestamp: string }>('/adk/health'),
+    stream: (
+      body: { agentName: string; message: string; conversationId?: string },
+      handlers: {
+        onDelta: (text: string) => void;
+        onDone?: (data: { conversationId?: string }) => void;
+        onSources?: (sources: { id: number; title: string; link: string; source?: string; favicon?: string; date?: string; snippet?: string }[]) => void;
+      }
+    ) => {
+      const url = `${API_BASE}/adk/stream`;
+      async function start() {
+        const res = await fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok || !res.body) throw new Error('ADK stream failed');
+        return res;
+      }
+
+      return start().then(async (res) => {
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+          for (const part of parts) {
+            if (!part.startsWith('data: ')) continue;
+            const payload = part.slice(6);
+            try {
+              const evt = JSON.parse(payload);
+              if (evt.type === 'delta') handlers.onDelta(evt.delta as string);
+              if (evt.type === 'sources' && Array.isArray(evt.sources)) handlers.onSources?.(evt.sources);
+              if (evt.type === 'done') handlers.onDone?.({ conversationId: evt.conversationId as string });
+            } catch {}
+          }
+        }
+        return true;
+      });
+    },
   },
   ai: {
     stream: (

@@ -524,7 +524,12 @@ Every post should do ONE of these:
 If it doesn't do at least ONE of these, it's not ready.
 
 Now you're ready to create. Let's build your authority.
+## OUTPUT FORMAT
 
+Always format your entire response as **GitHub-flavored Markdown**, not HTML.
+- Use headings, bullet lists, numbered lists, bold, italics, and fenced code blocks where helpful.
+- Do **not** emit raw HTML tags like <p>, <div>, <span>, <br>, or inline `style` attributes.
+- The content should be directly renderable in a Markdown renderer.
 """,
     tools=[google_search],
 )
