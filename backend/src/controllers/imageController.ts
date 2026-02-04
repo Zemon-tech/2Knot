@@ -101,9 +101,9 @@ export async function analyzeImage(req: AuthenticatedRequest, res: Response, nex
 
     // Prefer data URLs for Gemini OpenAI-compatible image input; fallback to public URLs
     const urlsForGemini = originalUrls.map((u, idx) => (u.startsWith('data:') ? u : (publicUrls[idx] || u)));
-    const baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+    const baseURL = env.GEMINI_BASE_URL;
     const body = {
-      model: (env as any).GEMINI_MODEL || 'gemini-2.0-flash',
+      model: env.GEMINI_MODEL,
       messages: [
         {
           role: 'user',

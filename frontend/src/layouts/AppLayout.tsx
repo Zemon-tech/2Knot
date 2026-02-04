@@ -161,6 +161,7 @@ export default function AppLayout() {
                     <span>New chat</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {/*
                 <SidebarMenuItem>
                   <SidebarMenuButton>
                     <BookOpen />
@@ -173,6 +174,7 @@ export default function AppLayout() {
                     <span>Projects</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                */}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

@@ -18,6 +18,8 @@ export const env = {
   JWT_REFRESH_SECRET: required('JWT_REFRESH_SECRET'),
   CLIENT_ORIGIN: required('CLIENT_ORIGIN', 'http://localhost:5173'),
   GEMINI_API_KEY: required('GEMINI_API_KEY'),
+  GEMINI_BASE_URL: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai/',
+  GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
   // Optional provider selection (defaults to gemini to preserve current behavior)
   AI_PROVIDER: (process.env.AI_PROVIDER || 'gemini') as 'gemini' | 'openrouter' | 'groq',
   // OpenRouter configuration (optional; only required if using OpenRouter)
