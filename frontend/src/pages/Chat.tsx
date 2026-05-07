@@ -74,7 +74,7 @@ export default function Chat() {
   const [autoScroll, setAutoScroll] = useState(true);
   const [atBottom, setAtBottom] = useState(true);
   const [atTop, setAtTop] = useState(true);
-  const [provider, setProvider] = useState<'gemini' | 'openrouter' | 'groq'>('gemini');
+  const [provider, setProvider] = useState<'gemini' | 'openrouter' | 'groq' | 'vllm'>('gemini');
   const [openModelDialog, setOpenModelDialog] = useState(false);
   const [openRouterModels, setOpenRouterModels] = useState<{ id: string; name?: string }[]>([]);
   const [groqModels, setGroqModels] = useState<{ id: string; name?: string }[]>([]);
@@ -222,8 +222,8 @@ export default function Chat() {
   // Load saved provider on mount and persist changes
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('aiProvider') as 'gemini' | 'openrouter' | 'groq' | null;
-      if (saved === 'gemini' || saved === 'openrouter' || saved === 'groq') setProvider(saved);
+      const saved = localStorage.getItem('aiProvider') as 'gemini' | 'openrouter' | 'groq' | 'vllm' | null;
+      if (saved === 'gemini' || saved === 'openrouter' || saved === 'groq' || saved === 'vllm') setProvider(saved);
       const savedModel = localStorage.getItem('openrouterModel');
       if (savedModel) setSelectedOpenRouterModel(savedModel);
       const ws = localStorage.getItem('webSearch');
@@ -673,7 +673,7 @@ export default function Chat() {
                 onClick={() => setOpenModelDialog(true)}
               >
                 <span className="truncate">
-                  {provider === 'openrouter' ? selectedOpenRouterModel : provider === 'groq' ? 'Groq' : 'Gemini'}
+                  {provider === 'openrouter' ? selectedOpenRouterModel : provider === 'groq' ? 'Groq' : provider === 'vllm' ? 'vLLM (Local)' : 'Gemini'}
                 </span>
                 <span className="ml-2 inline-flex items-center justify-center h-7 w-7">
                   <Settings className="size-4" />
@@ -794,6 +794,25 @@ export default function Chat() {
                       </div>
                     </ModelSelectorItem>
                   ))}
+                </ModelSelectorGroup>
+                <ModelSelectorGroup heading="vLLM (Self-hosted)">
+                  <ModelSelectorItem
+                    value="Qwen/Qwen2.5-Coder-7B-Instruct"
+                    onSelect={() => {
+                      setProvider('vllm');
+                      setOpenModelDialog(false);
+                    }}
+                  >
+                    <div className="flex items-center gap-3 w-full">
+                      <div className="size-4 rounded-sm bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-white text-[9px] font-bold leading-none select-none">
+                        v
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-medium truncate">Qwen2.5-Coder-7B</span>
+                        <span className="text-xs text-muted-foreground truncate">Qwen/Qwen2.5-Coder-7B-Instruct · local</span>
+                      </div>
+                    </div>
+                  </ModelSelectorItem>
                 </ModelSelectorGroup>
               </>
             )}

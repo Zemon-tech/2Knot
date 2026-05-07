@@ -21,7 +21,7 @@ export const env = {
   GEMINI_BASE_URL: process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai/',
   GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
   // Optional provider selection (defaults to gemini to preserve current behavior)
-  AI_PROVIDER: (process.env.AI_PROVIDER || 'gemini') as 'gemini' | 'openrouter' | 'groq',
+  AI_PROVIDER: (process.env.AI_PROVIDER || 'gemini') as 'gemini' | 'openrouter' | 'groq' | 'vllm',
   // OpenRouter configuration (optional; only required if using OpenRouter)
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || '',
   OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || 'openrouter/auto',
@@ -30,6 +30,9 @@ export const env = {
   // Groq configuration (optional; only required if using Groq)
   GROQ_API_KEY: process.env.GROQ_API_KEY || '',
   GROQ_MODEL: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+  // vLLM configuration (self-hosted OpenAI-compatible server)
+  VLLM_BASE_URL: process.env.VLLM_BASE_URL || 'http://192.168.1.154:8000/v1',
+  VLLM_MODEL: process.env.VLLM_MODEL || 'Qwen/Qwen2.5-Coder-7B-Instruct',
   // SerpAPI configuration (optional; only required if web search is enabled)
   SERPAPI_KEY: process.env.SERPAPI_KEY || '',
   // Supabase storage configuration

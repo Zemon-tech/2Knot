@@ -130,7 +130,7 @@ export const api = {
   },
   ai: {
     stream: (
-      body: { conversationId?: string; message: string; attachments?: { url: string; mediaType?: string; filename?: string }[]; provider?: 'gemini' | 'openrouter' | 'groq'; webSearch?: boolean; web?: { gl?: string; hl?: string; location?: string; num?: number; maxSources?: number }; agentId?: string },
+      body: { conversationId?: string; message: string; attachments?: { url: string; mediaType?: string; filename?: string }[]; provider?: 'gemini' | 'openrouter' | 'groq' | 'vllm'; webSearch?: boolean; web?: { gl?: string; hl?: string; location?: string; num?: number; maxSources?: number }; agentId?: string },
       handlers: {
         onDelta: (text: string) => void;
         onDone?: (data: { conversationId?: string }) => void;
@@ -194,7 +194,7 @@ export const api = {
         return true;
       });
     },
-    title: async (conversationId: string, provider?: 'gemini' | 'openrouter' | 'groq') => {
+    title: async (conversationId: string, provider?: 'gemini' | 'openrouter' | 'groq' | 'vllm') => {
       const path = `/ai/title`;
       const options: RequestInit = { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ conversationId, provider }) };
       let res = await fetch(`${API_BASE}${path}`, options);

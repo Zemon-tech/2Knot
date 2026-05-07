@@ -13,6 +13,7 @@ import {
   getOpenRouterModelId,
 } from "../ai/openrouterProvider";
 import { createGroqClient, getGroqModelId } from "../ai/groqProvider";
+import { createVllmClient, getVllmModelId } from "../ai/vllmProvider";
 import { streamText, generateText } from "ai";
 import {
   serpGoogleLightSearch,
@@ -106,7 +107,7 @@ export async function generateConversationTitle(
       .slice(0, 4000); // keep prompt bounded tighter to reduce token usage
 
     const provider =
-      (req.body?.provider as "gemini" | "openrouter" | "groq" | undefined) ||
+      (req.body?.provider as "gemini" | "openrouter" | "groq" | "vllm" | undefined) ||
       env.AI_PROVIDER;
     let modelId: string;
     let openAIProvider: ReturnType<typeof createOpenAI>;
@@ -117,6 +118,9 @@ export async function generateConversationTitle(
     } else if (provider === "groq") {
       openAIProvider = createGroqClient();
       modelId = getGroqModelId();
+    } else if (provider === "vllm") {
+      openAIProvider = createVllmClient();
+      modelId = getVllmModelId();
     } else {
       const baseURL = env.GEMINI_BASE_URL;
       modelId = env.GEMINI_MODEL;
@@ -202,7 +206,7 @@ export async function streamAIResponse(
       conversationId?: string;
       message: string;
       webSearch?: boolean;
-      provider?: "gemini" | "openrouter";
+      provider?: "gemini" | "openrouter" | "groq" | "vllm";
       web?: {
         gl?: string;
         hl?: string;
@@ -248,7 +252,7 @@ export async function streamAIResponse(
 
     // Select provider (Gemini default) or OpenRouter via OpenAI-compatible SDK
     const providerName =
-      (bodyProvider as "gemini" | "openrouter" | "groq" | undefined) ||
+      (bodyProvider as "gemini" | "openrouter" | "groq" | "vllm" | undefined) ||
       env.AI_PROVIDER;
     let modelId: string;
     let openAIProvider: ReturnType<typeof createOpenAI>;
@@ -258,6 +262,9 @@ export async function streamAIResponse(
     } else if (providerName === "groq") {
       openAIProvider = createGroqClient();
       modelId = getGroqModelId();
+    } else if (providerName === "vllm") {
+      openAIProvider = createVllmClient();
+      modelId = getVllmModelId();
     } else {
       const baseURL = env.GEMINI_BASE_URL;
       modelId = env.GEMINI_MODEL;
