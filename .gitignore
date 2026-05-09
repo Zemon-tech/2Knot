@@ -14,6 +14,10 @@ yarn-error.log*
 coverage/
 
 # Env & secrets
+venv/
+.venv/
+agent/.venv/
+
 .env
 .env.*
 *.env
